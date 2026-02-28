@@ -3,7 +3,7 @@ import type { TrackEffects } from "./effects";
 export interface Track {
   id: string;
   name: string;
-  type: "hum" | "arrangement" | "beat" | "instrument" | "midi";
+  type: "hum" | "arrangement" | "beat" | "instrument" | "midi" | "vocal";
   audioUrl: string | null;
   audioBuffer: AudioBuffer | null;
   volume: number; // 0-1

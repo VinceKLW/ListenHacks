@@ -151,12 +151,22 @@ export default function HumRecorder() {
 
       if (!analyzeRes.ok) throw new Error("Analysis failed");
       const analysis = await analyzeRes.json();
-      analysis.durationSeconds = humBuffer.duration;
+      const targetDurationSeconds = Math.max(humBuffer.duration, 32);
+      analysis.durationSeconds = targetDurationSeconds;
       setAnalysis(analysis);
 
-      // Generate individual layers via MIDI (match hum length)
+      // Generate individual layers via MIDI (avoid limiting to hum length)
       setStep("generating");
-      const defaultLayers = getDefaultLayers(analysis.genre);
+      let defaultLayers = getDefaultLayers(analysis.genre);
+      // Always prepend "lead" when we have a good melody transcription — this
+      // plays the user's exact hum back as a synth melody and anchors all other layers.
+      if (
+        analysis.melody &&
+        analysis.melody.length >= 4 &&
+        !defaultLayers.includes("lead" as InstrumentType)
+      ) {
+        defaultLayers = ["lead" as InstrumentType, ...defaultLayers];
+      }
       setGeneratingLayers(defaultLayers);
 
       // Create placeholder tracks for all layers
@@ -184,7 +194,7 @@ export default function HumRecorder() {
             const { audioBuffer } = await generateMidiTrack(
               analysis,
               instrument as InstrumentType,
-              analysis.durationSeconds ?? 16
+              analysis.durationSeconds ?? 32
             );
             updateTrack(id, { audioBuffer, isLoading: false });
           } catch (err) {

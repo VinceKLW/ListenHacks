@@ -21,6 +21,7 @@ const typeLabels: Record<string, string> = {
   beat: "BEAT",
   instrument: "INST",
   midi: "MIDI",
+  vocal: "VOX",
 };
 
 const typeColors: Record<string, string> = {
@@ -29,6 +30,7 @@ const typeColors: Record<string, string> = {
   beat: "#FFB800",
   instrument: "#00FF87",
   midi: "#06b6d4",
+  vocal: "#F97316",
 };
 
 export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
