@@ -20,7 +20,7 @@ export default function VoiceCommandBar() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const { step, addTrack, updateTrack, analysis, timeSelection } = useTracksStore();
+  const { step, addTrack, updateTrack, analysis, timeSelections } = useTracksStore();
 
   if (step !== "studio") return null;
 
@@ -75,39 +75,62 @@ export default function VoiceCommandBar() {
 
       if (command.action === "add_beat") {
         // --- Percussion → ElevenLabs ---
-        const beatDuration = timeSelection ? timeSelection.end - timeSelection.start : 8;
-        const beatStartOffset = timeSelection?.start;
-        const newTrackId = uuidv4();
-        addTrack({
-          id: newTrackId,
-          name: command.description,
-          type: "beat",
-          audioUrl: null,
-          audioBuffer: null,
-          volume: 0.7,
-          muted: false,
-          solo: false,
-          color: "#ea580c",
-          isLoading: true,
-          startOffset: beatStartOffset,
-        });
-
-        setStatusText(`Generating: ${command.description}`);
-
-        const beatRes = await fetch("/api/generate-beat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            description: command.description,
-            durationSeconds: beatDuration,
-          }),
-        });
-
-        if (!beatRes.ok) throw new Error("Beat generation failed");
-        const { audioBase64: beatBase64 } = await beatRes.json();
-        const audioBuffer = await base64ToAudioBuffer(beatBase64, "audio/mpeg");
-        updateTrack(newTrackId, { audioBuffer, isLoading: false });
-        setStatusText(`Added: ${command.description}`);
+        if (timeSelections.length > 0) {
+          // One beat per selection, generated sequentially
+          for (const sel of timeSelections) {
+            const newTrackId = uuidv4();
+            addTrack({
+              id: newTrackId,
+              name: command.description,
+              type: "beat",
+              audioUrl: null,
+              audioBuffer: null,
+              volume: 0.7,
+              muted: false,
+              solo: false,
+              color: "#ea580c",
+              isLoading: true,
+              startOffset: sel.start,
+            });
+            setStatusText(`Generating: ${command.description}`);
+            const beatRes = await fetch("/api/generate-beat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ description: command.description, durationSeconds: sel.end - sel.start }),
+            });
+            if (!beatRes.ok) throw new Error("Beat generation failed");
+            const { audioBase64: beatBase64 } = await beatRes.json();
+            const audioBuffer = await base64ToAudioBuffer(beatBase64, "audio/mpeg");
+            updateTrack(newTrackId, { audioBuffer, isLoading: false });
+          }
+          setStatusText(`Added ${timeSelections.length} beat${timeSelections.length > 1 ? "s" : ""}: ${command.description}`);
+        } else {
+          // No selection — single 8s beat
+          const newTrackId = uuidv4();
+          addTrack({
+            id: newTrackId,
+            name: command.description,
+            type: "beat",
+            audioUrl: null,
+            audioBuffer: null,
+            volume: 0.7,
+            muted: false,
+            solo: false,
+            color: "#ea580c",
+            isLoading: true,
+          });
+          setStatusText(`Generating: ${command.description}`);
+          const beatRes = await fetch("/api/generate-beat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ description: command.description, durationSeconds: 8 }),
+          });
+          if (!beatRes.ok) throw new Error("Beat generation failed");
+          const { audioBase64: beatBase64 } = await beatRes.json();
+          const audioBuffer = await base64ToAudioBuffer(beatBase64, "audio/mpeg");
+          updateTrack(newTrackId, { audioBuffer, isLoading: false });
+          setStatusText(`Added: ${command.description}`);
+        }
 
       } else if (command.action === "add_instrument") {
         // --- Melodic → MIDI pipeline ---
@@ -115,51 +138,74 @@ export default function VoiceCommandBar() {
           ? (command.instrument as Parameters<typeof generateMidiTrack>[1])
           : detectInstrumentFromDescription(command.description);
 
-        const instrDuration = timeSelection
-          ? timeSelection.end - timeSelection.start
-          : analysis?.durationSeconds ?? 16;
-        const instrStartOffset = timeSelection?.start;
-
-        const newTrackId = uuidv4();
-        addTrack({
-          id: newTrackId,
-          name: command.description,
-          type: "midi",
-          audioUrl: null,
-          audioBuffer: null,
-          volume: 0.7,
-          muted: false,
-          solo: false,
-          color: getMidiInstrumentColor(instrument),
-          isLoading: true,
-          startOffset: instrStartOffset,
-        });
-
-        setStatusText(`Generating ${instrument}: ${command.description}...`);
-
-        if (analysis) {
-          const { audioBuffer } = await generateMidiTrack(
-            analysis,
-            instrument,
-            instrDuration
-          );
-          updateTrack(newTrackId, { audioBuffer, isLoading: false });
-          setStatusText(`Added: ${command.description}`);
+        if (timeSelections.length > 0) {
+          // One instrument track per selection, generated sequentially
+          for (const sel of timeSelections) {
+            const newTrackId = uuidv4();
+            addTrack({
+              id: newTrackId,
+              name: command.description,
+              type: "midi",
+              audioUrl: null,
+              audioBuffer: null,
+              volume: 0.7,
+              muted: false,
+              solo: false,
+              color: getMidiInstrumentColor(instrument),
+              isLoading: true,
+              startOffset: sel.start,
+            });
+            setStatusText(`Generating ${instrument}: ${command.description}...`);
+            const durationSec = sel.end - sel.start;
+            if (analysis) {
+              const { audioBuffer } = await generateMidiTrack(analysis, instrument, durationSec);
+              updateTrack(newTrackId, { audioBuffer, isLoading: false });
+            } else {
+              const beatRes = await fetch("/api/generate-beat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description: command.description, durationSeconds: durationSec }),
+              });
+              if (!beatRes.ok) throw new Error("Generation failed");
+              const { audioBase64: fallbackBase64 } = await beatRes.json();
+              const audioBuffer = await base64ToAudioBuffer(fallbackBase64, "audio/mpeg");
+              updateTrack(newTrackId, { audioBuffer, isLoading: false });
+            }
+          }
+          setStatusText(`Added ${timeSelections.length} ${instrument}${timeSelections.length > 1 ? "s" : ""}: ${command.description}`);
         } else {
-          // Fallback to ElevenLabs if no analysis
-          const beatRes = await fetch("/api/generate-beat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              description: command.description,
-              durationSeconds: instrDuration,
-            }),
+          // No selection — single instrument for full hum duration
+          const instrDuration = analysis?.durationSeconds ?? 16;
+          const newTrackId = uuidv4();
+          addTrack({
+            id: newTrackId,
+            name: command.description,
+            type: "midi",
+            audioUrl: null,
+            audioBuffer: null,
+            volume: 0.7,
+            muted: false,
+            solo: false,
+            color: getMidiInstrumentColor(instrument),
+            isLoading: true,
           });
-          if (!beatRes.ok) throw new Error("Generation failed");
-          const { audioBase64: fallbackBase64 } = await beatRes.json();
-          const audioBuffer = await base64ToAudioBuffer(fallbackBase64, "audio/mpeg");
-          updateTrack(newTrackId, { audioBuffer, isLoading: false });
-          setStatusText(`Added: ${command.description}`);
+          setStatusText(`Generating ${instrument}: ${command.description}...`);
+          if (analysis) {
+            const { audioBuffer } = await generateMidiTrack(analysis, instrument, instrDuration);
+            updateTrack(newTrackId, { audioBuffer, isLoading: false });
+            setStatusText(`Added: ${command.description}`);
+          } else {
+            const beatRes = await fetch("/api/generate-beat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ description: command.description, durationSeconds: instrDuration }),
+            });
+            if (!beatRes.ok) throw new Error("Generation failed");
+            const { audioBase64: fallbackBase64 } = await beatRes.json();
+            const audioBuffer = await base64ToAudioBuffer(fallbackBase64, "audio/mpeg");
+            updateTrack(newTrackId, { audioBuffer, isLoading: false });
+            setStatusText(`Added: ${command.description}`);
+          }
         }
 
       } else if (command.action === "change_mood") {

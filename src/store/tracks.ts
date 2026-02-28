@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { Track, MusicalAnalysis, AppStep } from "@/types/music";
 
+export interface TimeSelection {
+  id: string;
+  start: number;
+  end: number;
+  trackId: string | null; // null = master timeline
+}
+
 interface TracksStore {
   step: AppStep;
   setStep: (step: AppStep) => void;
@@ -11,7 +18,7 @@ interface TracksStore {
 
   isPlaying: boolean;
   selectedTrackId: string | null;
-  timeSelection: { start: number; end: number; trackId: string | null } | null;
+  timeSelections: TimeSelection[];
 
   setHumBlob: (blob: Blob) => void;
   setAnalysis: (analysis: MusicalAnalysis) => void;
@@ -20,7 +27,9 @@ interface TracksStore {
   removeTrack: (id: string) => void;
   setPlaying: (playing: boolean) => void;
   setSelectedTrackId: (id: string | null) => void;
-  setTimeSelection: (sel: { start: number; end: number; trackId: string | null } | null) => void;
+  addTimeSelection: (sel: Omit<TimeSelection, "id">) => void;
+  removeTimeSelection: (id: string) => void;
+  clearTimeSelections: () => void;
   clearTracks: () => void;
   reset: () => void;
 }
@@ -34,7 +43,7 @@ export const useTracksStore = create<TracksStore>((set) => ({
   humAudioBlob: null,
   isPlaying: false,
   selectedTrackId: null,
-  timeSelection: null,
+  timeSelections: [],
 
   setHumBlob: (blob) => set({ humAudioBlob: blob }),
   setAnalysis: (analysis) => set({ analysis }),
@@ -53,14 +62,26 @@ export const useTracksStore = create<TracksStore>((set) => ({
     set((state) => ({
       tracks: state.tracks.filter((t) => t.id !== id),
       selectedTrackId: state.selectedTrackId === id ? null : state.selectedTrackId,
+      timeSelections: state.timeSelections.filter((s) => s.trackId !== id),
     })),
 
   setPlaying: (playing) => set({ isPlaying: playing }),
   setSelectedTrackId: (id) => set({ selectedTrackId: id }),
-  setTimeSelection: (sel) => set({ timeSelection: sel }),
+
+  addTimeSelection: (sel) =>
+    set((state) => ({
+      timeSelections: [...state.timeSelections, { ...sel, id: crypto.randomUUID() }],
+    })),
+
+  removeTimeSelection: (id) =>
+    set((state) => ({
+      timeSelections: state.timeSelections.filter((s) => s.id !== id),
+    })),
+
+  clearTimeSelections: () => set({ timeSelections: [] }),
 
   clearTracks: () =>
-    set({ tracks: [], analysis: null, humAudioBlob: null, isPlaying: false, timeSelection: null }),
+    set({ tracks: [], analysis: null, humAudioBlob: null, isPlaying: false, timeSelections: [] }),
 
   reset: () =>
     set({
@@ -70,6 +91,6 @@ export const useTracksStore = create<TracksStore>((set) => ({
       humAudioBlob: null,
       isPlaying: false,
       selectedTrackId: null,
-      timeSelection: null,
+      timeSelections: [],
     }),
 }));

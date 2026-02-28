@@ -36,7 +36,7 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const { tracks, isPlaying, updateTrack, removeTrack, selectedTrackId, setSelectedTrackId, timeSelection, setTimeSelection } =
+  const { tracks, isPlaying, updateTrack, removeTrack, selectedTrackId, setSelectedTrackId, timeSelections, addTimeSelection } =
     useTracksStore();
   const isSelected = selectedTrackId === track.id;
 
@@ -153,7 +153,7 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
             >
               {typeLabels[track.type]}
             </span>
-            {timeSelection?.trackId === track.id && (
+            {timeSelections.some((s) => s.trackId === track.id) && (
               <div
                 className="w-1 h-1 rounded-full"
                 style={{ backgroundColor: "#00D4FF", boxShadow: "0 0 4px #00D4FF" }}
@@ -203,28 +203,32 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
           <>
             <div ref={waveformRef} className="w-full" />
 
-            {/* Selection overlay */}
-            {timeSelection?.trackId === track.id && track.audioBuffer && (() => {
-              const dur = track.audioBuffer.duration;
-              const startPct = Math.max(0, (timeSelection.start / dur) * 100);
-              const widthPct = Math.min(100 - startPct, ((timeSelection.end - timeSelection.start) / dur) * 100);
-              return (
-                <div
-                  className="absolute top-0 bottom-0 pointer-events-none z-10 rounded"
-                  style={{
-                    left: `${startPct}%`,
-                    width: `${widthPct}%`,
-                    background: "rgba(0,212,255,0.15)",
-                    borderLeft: "1.5px solid rgba(0,212,255,0.8)",
-                    borderRight: "1.5px solid rgba(0,212,255,0.8)",
-                  }}
-                />
-              );
-            })()}
+            {/* Selection overlays — one per active selection on this track */}
+            {track.audioBuffer && timeSelections
+              .filter((s) => s.trackId === track.id)
+              .map((sel) => {
+                const dur = track.audioBuffer!.duration;
+                const startPct = Math.max(0, (sel.start / dur) * 100);
+                const widthPct = Math.min(100 - startPct, ((sel.end - sel.start) / dur) * 100);
+                return (
+                  <div
+                    key={sel.id}
+                    className="absolute top-0 bottom-0 pointer-events-none z-10 rounded"
+                    style={{
+                      left: `${startPct}%`,
+                      width: `${widthPct}%`,
+                      background: "rgba(0,212,255,0.15)",
+                      borderLeft: "1.5px solid rgba(0,212,255,0.8)",
+                      borderRight: "1.5px solid rgba(0,212,255,0.8)",
+                    }}
+                  />
+                );
+              })}
 
-            {/* Drag-to-select hit area */}
+            {/* Drag-to-select hit area — z-20 ensures it sits above WaveSurfer canvas */}
             <div
-              className="absolute inset-0 cursor-crosshair"
+              className="absolute inset-0 cursor-crosshair z-20 hover:bg-white/[0.03] transition-colors"
+              title="Drag to select a time range"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 if (!track.audioBuffer) return;
@@ -244,7 +248,7 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
                     const endX = ev.clientX - rect.left;
                     const startSec = Math.max(0, (Math.min(startX, endX) / rect.width) * dur);
                     const endSec = Math.min(dur, (Math.max(startX, endX) / rect.width) * dur);
-                    setTimeSelection({ start: startSec, end: endSec, trackId: track.id });
+                    addTimeSelection({ start: startSec, end: endSec, trackId: track.id });
                   }
                 };
 

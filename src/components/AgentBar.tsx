@@ -22,19 +22,19 @@ function formatTime(s: number) {
 
 export default function AgentBar() {
   const [inputValue, setInputValue] = useState("");
-  const { tracks, analysis, updateTrack, addTrack, removeTrack, step, timeSelection, setTimeSelection } =
+  const { tracks, analysis, updateTrack, addTrack, removeTrack, step, timeSelections, removeTimeSelection } =
     useTracksStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Keep refs so onToolCall always has fresh state
   const tracksRef = useRef(tracks);
   const analysisRef = useRef(analysis);
-  const timeSelectionRef = useRef(timeSelection);
+  const timeSelectionsRef = useRef(timeSelections);
   useEffect(() => {
     tracksRef.current = tracks;
     analysisRef.current = analysis;
-    timeSelectionRef.current = timeSelection;
-  }, [tracks, analysis, timeSelection]);
+    timeSelectionsRef.current = timeSelections;
+  }, [tracks, analysis, timeSelections]);
 
   const { messages, sendMessage, status, addToolOutput } = useChat({
     transport: new DefaultChatTransport({ api: "/api/agent" }),
@@ -79,40 +79,74 @@ export default function AgentBar() {
         }
 
         case "generateBeat": {
-          const sel = timeSelectionRef.current;
-          const durationSeconds = sel ? sel.end - sel.start : 8;
-          const startOffset = sel?.start;
-          const newId = uuidv4();
-          addTrack({
-            id: newId,
-            name: description,
-            type: "beat",
-            audioUrl: null,
-            audioBuffer: null,
-            volume: 0.7,
-            muted: false,
-            solo: false,
-            color: "#ea580c",
-            isLoading: true,
-            startOffset,
-          });
-          void (async () => {
-            try {
-              const res = await fetch("/api/generate-beat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ description, durationSeconds }),
+          const sels = timeSelectionsRef.current;
+          if (sels.length > 0) {
+            // One track per selection, all launched in parallel
+            sels.forEach((sel) => {
+              const newId = uuidv4();
+              addTrack({
+                id: newId,
+                name: description,
+                type: "beat",
+                audioUrl: null,
+                audioBuffer: null,
+                volume: 0.7,
+                muted: false,
+                solo: false,
+                color: "#ea580c",
+                isLoading: true,
+                startOffset: sel.start,
               });
-              if (!res.ok) throw new Error();
-              const { audioBase64 } = await res.json();
-              const buf = await base64ToAudioBuffer(audioBase64, "audio/mpeg");
-              updateTrack(newId, { audioBuffer: buf, isLoading: false });
-              resolve(`Beat "${description}" added`);
-            } catch {
-              updateTrack(newId, { isLoading: false, name: `${description} (failed)` });
-              resolve("Beat generation failed");
-            }
-          })();
+              void (async () => {
+                try {
+                  const res = await fetch("/api/generate-beat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ description, durationSeconds: sel.end - sel.start }),
+                  });
+                  if (!res.ok) throw new Error();
+                  const { audioBase64 } = await res.json();
+                  const buf = await base64ToAudioBuffer(audioBase64, "audio/mpeg");
+                  updateTrack(newId, { audioBuffer: buf, isLoading: false });
+                } catch {
+                  updateTrack(newId, { isLoading: false, name: `${description} (failed)` });
+                }
+              })();
+            });
+            resolve(`Beat "${description}" added to ${sels.length} selection${sels.length > 1 ? "s" : ""}`);
+          } else {
+            // No selection — single 8s beat, no offset
+            const newId = uuidv4();
+            addTrack({
+              id: newId,
+              name: description,
+              type: "beat",
+              audioUrl: null,
+              audioBuffer: null,
+              volume: 0.7,
+              muted: false,
+              solo: false,
+              color: "#ea580c",
+              isLoading: true,
+            });
+            void (async () => {
+              try {
+                const res = await fetch("/api/generate-beat", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ description, durationSeconds: 8 }),
+                });
+                if (!res.ok) throw new Error();
+                const { audioBase64 } = await res.json();
+                const buf = await base64ToAudioBuffer(audioBase64, "audio/mpeg");
+                updateTrack(newId, { audioBuffer: buf, isLoading: false });
+                resolve(`Beat "${description}" added`);
+              } catch {
+                updateTrack(newId, { isLoading: false, name: `${description} (failed)` });
+                resolve("Beat generation failed");
+              }
+            })();
+          }
           break;
         }
 
@@ -123,33 +157,60 @@ export default function AgentBar() {
             resolve("No song analysis — record a hum first");
             break;
           }
-          const sel = timeSelectionRef.current;
-          const durationSec = sel ? sel.end - sel.start : 16;
-          const startOffset = sel?.start;
-          const newId = uuidv4();
-          addTrack({
-            id: newId,
-            name: description,
-            type: "midi",
-            audioUrl: null,
-            audioBuffer: null,
-            volume: 0.7,
-            muted: false,
-            solo: false,
-            color: getMidiInstrumentColor(instr),
-            isLoading: true,
-            startOffset,
-          });
-          void (async () => {
-            try {
-              const { audioBuffer } = await generateMidiTrack(currentAnalysis, instr, durationSec);
-              updateTrack(newId, { audioBuffer, isLoading: false });
-              resolve(`${instr} "${description}" added`);
-            } catch {
-              updateTrack(newId, { isLoading: false, name: `${description} (failed)` });
-              resolve(`${instr} generation failed`);
-            }
-          })();
+          const sels = timeSelectionsRef.current;
+          if (sels.length > 0) {
+            // One MIDI track per selection, all launched in parallel
+            sels.forEach((sel) => {
+              const newId = uuidv4();
+              addTrack({
+                id: newId,
+                name: description,
+                type: "midi",
+                audioUrl: null,
+                audioBuffer: null,
+                volume: 0.7,
+                muted: false,
+                solo: false,
+                color: getMidiInstrumentColor(instr),
+                isLoading: true,
+                startOffset: sel.start,
+              });
+              void (async () => {
+                try {
+                  const { audioBuffer } = await generateMidiTrack(currentAnalysis, instr, sel.end - sel.start);
+                  updateTrack(newId, { audioBuffer, isLoading: false });
+                } catch {
+                  updateTrack(newId, { isLoading: false, name: `${description} (failed)` });
+                }
+              })();
+            });
+            resolve(`${instr} "${description}" added to ${sels.length} selection${sels.length > 1 ? "s" : ""}`);
+          } else {
+            // No selection — single 16s instrument, no offset
+            const newId = uuidv4();
+            addTrack({
+              id: newId,
+              name: description,
+              type: "midi",
+              audioUrl: null,
+              audioBuffer: null,
+              volume: 0.7,
+              muted: false,
+              solo: false,
+              color: getMidiInstrumentColor(instr),
+              isLoading: true,
+            });
+            void (async () => {
+              try {
+                const { audioBuffer } = await generateMidiTrack(currentAnalysis, instr, 16);
+                updateTrack(newId, { audioBuffer, isLoading: false });
+                resolve(`${instr} "${description}" added`);
+              } catch {
+                updateTrack(newId, { isLoading: false, name: `${description} (failed)` });
+                resolve(`${instr} generation failed`);
+              }
+            })();
+          }
           break;
         }
       }
@@ -184,7 +245,7 @@ export default function AgentBar() {
             isLoading: t.isLoading,
           })),
           analysis: analysisRef.current,
-          timeSelection: timeSelectionRef.current,
+          timeSelections: timeSelectionsRef.current,
         },
       }
     );
@@ -322,9 +383,9 @@ export default function AgentBar() {
 
       {/* Input bar — pinned to bottom */}
       <div className="shrink-0 border-t border-[#2A2A2E] p-2">
-        {/* Time selection context chip */}
+        {/* Time selection context chips — one per active selection */}
         <AnimatePresence>
-          {timeSelection && (
+          {timeSelections.length > 0 && (
             <motion.div
               initial={{ opacity: 0, height: 0, marginBottom: 0 }}
               animate={{ opacity: 1, height: "auto", marginBottom: 6 }}
@@ -332,28 +393,35 @@ export default function AgentBar() {
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded border border-[#00D4FF]/25 bg-[#00D4FF]/[0.06]">
-                <Timer className="w-2.5 h-2.5 text-[#00D4FF] shrink-0" />
-                <span className="text-[8px] uppercase tracking-wider text-[#00D4FF]/70 font-semibold shrink-0">
-                  {timeSelection.trackId
-                    ? (tracks.find((t) => t.id === timeSelection.trackId)?.name ?? "Track")
-                    : "Master"}
-                </span>
-                <span className="text-[8px] text-[#00D4FF]/30 shrink-0">|</span>
-                <span className="text-[9px] font-[tabular-nums] text-[#00D4FF] font-mono shrink-0">
-                  {formatTime(timeSelection.start)} – {formatTime(timeSelection.end)}
-                </span>
-                <span className="text-[8px] text-[#00D4FF]/50 font-[tabular-nums] shrink-0">
-                  ({formatTime(timeSelection.end - timeSelection.start)})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setTimeSelection(null)}
-                  className="ml-auto text-[#00D4FF]/40 hover:text-[#FF3B30] transition-colors text-[9px] leading-none shrink-0"
-                  title="Clear selection"
-                >
-                  ✕
-                </button>
+              <div className="flex flex-col gap-1">
+                {timeSelections.map((sel) => (
+                  <div
+                    key={sel.id}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded border border-[#00D4FF]/25 bg-[#00D4FF]/[0.06]"
+                  >
+                    <Timer className="w-2.5 h-2.5 text-[#00D4FF] shrink-0" />
+                    <span className="text-[8px] uppercase tracking-wider text-[#00D4FF]/70 font-semibold shrink-0 truncate max-w-[60px]">
+                      {sel.trackId
+                        ? (tracks.find((t) => t.id === sel.trackId)?.name ?? "Track")
+                        : "Master"}
+                    </span>
+                    <span className="text-[8px] text-[#00D4FF]/30 shrink-0">|</span>
+                    <span className="text-[9px] font-[tabular-nums] text-[#00D4FF] font-mono shrink-0">
+                      {formatTime(sel.start)} – {formatTime(sel.end)}
+                    </span>
+                    <span className="text-[8px] text-[#00D4FF]/50 font-[tabular-nums] shrink-0">
+                      ({formatTime(sel.end - sel.start)})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeTimeSelection(sel.id)}
+                      className="ml-auto text-[#00D4FF]/40 hover:text-[#FF3B30] transition-colors text-[9px] leading-none shrink-0"
+                      title="Remove this selection"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}
@@ -368,7 +436,7 @@ export default function AgentBar() {
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder={timeSelection ? "add beat, add piano to selection..." : "mute bass, add trap drums..."}
+              placeholder={timeSelections.length > 0 ? "add piano to selections..." : "mute bass, add trap drums..."}
               className="w-full h-8 bg-[#0D0D0F] border border-[#2A2A2E] rounded pl-7 pr-2 text-[11px] text-[#E0E0E4] placeholder:text-[#3A3A42] outline-none focus:border-[#A855F7]/40 transition-colors font-mono"
               style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.3)" }}
               disabled={isLoading}

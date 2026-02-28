@@ -13,7 +13,7 @@ function formatTime(seconds: number): string {
 }
 
 export default function MasterTrack() {
-  const { tracks, isPlaying, setPlaying, step, timeSelection, setTimeSelection } = useTracksStore();
+  const { tracks, isPlaying, setPlaying, step, timeSelections, addTimeSelection, removeTimeSelection } = useTracksStore();
   const [position, setPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [liveSelection, setLiveSelection] = useState<{ startPct: number; endPct: number } | null>(null);
@@ -21,6 +21,7 @@ export default function MasterTrack() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const duration = mixer.getDuration(tracks);
+  const masterSelections = timeSelections.filter((s) => s.trackId === null);
 
   // Subscribe to position updates from mixer
   useEffect(() => {
@@ -165,8 +166,7 @@ export default function MasterTrack() {
         setIsDragging(false);
 
         if (!dragging) {
-          // Short click → seek + clear selection
-          setTimeSelection(null);
+          // Short click → seek only (do NOT clear selections)
           setLiveSelection(null);
           if (isPlaying) {
             mixer.stop();
@@ -174,11 +174,11 @@ export default function MasterTrack() {
           }
           handleSeek(ev.clientX);
         } else {
-          // Drag → commit selection
+          // Drag → add new selection (accumulates)
           const curX = ev.clientX - rect.left;
           const startSec = Math.max(0, Math.min(1, Math.min(startX, curX) / rect.width)) * duration;
           const endSec = Math.max(0, Math.min(1, Math.max(startX, curX) / rect.width)) * duration;
-          setTimeSelection({ start: startSec, end: endSec, trackId: null });
+          addTimeSelection({ start: startSec, end: endSec, trackId: null });
           setLiveSelection(null);
         }
       };
@@ -186,19 +186,12 @@ export default function MasterTrack() {
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
-    [duration, handleSeek, isPlaying, setPlaying, setTimeSelection]
+    [duration, handleSeek, isPlaying, setPlaying, addTimeSelection]
   );
 
   if (step !== "studio" || duration === 0) return null;
 
   const progressPct = duration > 0 ? (position / duration) * 100 : 0;
-
-  // Compute which selection overlay to show (live drag takes priority)
-  const selOverlay = liveSelection
-    ? liveSelection
-    : timeSelection?.trackId === null
-    ? { startPct: timeSelection.start / duration, endPct: timeSelection.end / duration }
-    : null;
 
   return (
     <motion.div
@@ -208,24 +201,24 @@ export default function MasterTrack() {
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
       <div className="flex items-center justify-between mb-1 px-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] uppercase tracking-[0.12em] text-[#505058] font-[family-name:var(--font-display)] font-semibold">
             Master
           </span>
-          {timeSelection && timeSelection.trackId === null && (
-            <div className="lcd-display px-2 py-0.5 flex items-center gap-1.5">
+          {masterSelections.map((sel) => (
+            <div key={sel.id} className="lcd-display px-2 py-0.5 flex items-center gap-1.5">
               <span className="text-[9px] font-[tabular-nums] text-[#00D4FF]">
-                {formatTime(timeSelection.start)} – {formatTime(timeSelection.end)}
+                {formatTime(sel.start)} – {formatTime(sel.end)}
               </span>
               <button
-                onClick={() => setTimeSelection(null)}
+                onClick={() => removeTimeSelection(sel.id)}
                 className="text-[#505058] hover:text-[#FF3B30] text-[9px] leading-none transition-colors"
-                title="Clear selection"
+                title="Remove selection"
               >
                 ✕
               </button>
             </div>
-          )}
+          ))}
         </div>
         <div className="flex items-center gap-3">
           <div className="lcd-display px-2 py-0.5">
@@ -286,23 +279,45 @@ export default function MasterTrack() {
           }}
         />
 
-        {/* Time Selection Overlay */}
-        {selOverlay && (
+        {/* Committed master selection overlays */}
+        {masterSelections.map((sel) => (
           <div
+            key={sel.id}
             className="absolute top-0 bottom-0 pointer-events-none z-20"
             style={{
-              left: `${selOverlay.startPct * 100}%`,
-              width: `${(selOverlay.endPct - selOverlay.startPct) * 100}%`,
+              left: `${(sel.start / duration) * 100}%`,
+              width: `${((sel.end - sel.start) / duration) * 100}%`,
               background: "rgba(0,212,255,0.12)",
               borderLeft: "1.5px solid rgba(0,212,255,0.7)",
               borderRight: "1.5px solid rgba(0,212,255,0.7)",
             }}
           >
-            {/* Duration label */}
-            {(selOverlay.endPct - selOverlay.startPct) * 100 > 8 && (
+            {((sel.end - sel.start) / duration) * 100 > 8 && (
               <div className="absolute top-1 left-1/2 -translate-x-1/2 lcd-display px-1 py-0 whitespace-nowrap">
                 <span className="text-[8px] font-[tabular-nums] text-[#00D4FF]">
-                  {formatTime((selOverlay.endPct - selOverlay.startPct) * duration)}
+                  {formatTime(sel.end - sel.start)}
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Live drag selection overlay */}
+        {liveSelection && (
+          <div
+            className="absolute top-0 bottom-0 pointer-events-none z-20"
+            style={{
+              left: `${liveSelection.startPct * 100}%`,
+              width: `${(liveSelection.endPct - liveSelection.startPct) * 100}%`,
+              background: "rgba(0,212,255,0.10)",
+              borderLeft: "1.5px solid rgba(0,212,255,0.5)",
+              borderRight: "1.5px solid rgba(0,212,255,0.5)",
+            }}
+          >
+            {(liveSelection.endPct - liveSelection.startPct) * 100 > 8 && (
+              <div className="absolute top-1 left-1/2 -translate-x-1/2 lcd-display px-1 py-0 whitespace-nowrap">
+                <span className="text-[8px] font-[tabular-nums] text-[#00D4FF]/60">
+                  {formatTime((liveSelection.endPct - liveSelection.startPct) * duration)}
                 </span>
               </div>
             )}
@@ -311,7 +326,7 @@ export default function MasterTrack() {
 
         {/* Playhead */}
         <div
-          className="absolute top-0 bottom-0 w-[2px] pointer-events-none z-10"
+          className="absolute top-0 bottom-0 w-[2px] pointer-events-none z-30"
           style={{
             left: `${progressPct}%`,
             background: "#00FF87",
