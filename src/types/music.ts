@@ -11,12 +11,23 @@ export interface Track {
   isLoading: boolean;
 }
 
+export interface MusicalAnalysisNote {
+  note: string;
+  time: number;
+  duration: number;
+  velocity: number;
+}
+
 export interface MusicalAnalysis {
   key: string;
   tempo: number;
   mood: string;
   genre: string;
   description: string;
+  /** Transcribed melody from the hum - used to align generated parts */
+  melody?: MusicalAnalysisNote[];
+  /** Length of the hum recording in seconds - generated tracks match this */
+  durationSeconds?: number;
 }
 
 export interface VoiceCommand {

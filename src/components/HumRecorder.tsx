@@ -151,9 +151,10 @@ export default function HumRecorder() {
 
       if (!analyzeRes.ok) throw new Error("Analysis failed");
       const analysis = await analyzeRes.json();
+      analysis.durationSeconds = humBuffer.duration;
       setAnalysis(analysis);
 
-      // Generate individual layers via MIDI
+      // Generate individual layers via MIDI (match hum length)
       setStep("generating");
       const defaultLayers = getDefaultLayers(analysis.genre);
       setGeneratingLayers(defaultLayers);
@@ -183,7 +184,7 @@ export default function HumRecorder() {
             const { audioBuffer } = await generateMidiTrack(
               analysis,
               instrument as InstrumentType,
-              16
+              analysis.durationSeconds ?? 16
             );
             updateTrack(id, { audioBuffer, isLoading: false });
           } catch (err) {

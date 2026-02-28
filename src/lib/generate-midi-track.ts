@@ -16,7 +16,53 @@ export async function generateMidiTrack(
   instrument: InstrumentType,
   durationSeconds: number = 16
 ): Promise<GenerateMidiTrackResult> {
-  // Step 1: Get MIDI data from Gemini
+  // For lead: use transcribed hum melody directly when available (guarantees match)
+  if (
+    instrument === "lead" &&
+    analysis.melody &&
+    analysis.melody.length >= 4
+  ) {
+    const melodyEnd =
+      Math.max(...analysis.melody.map((n) => n.time + n.duration)) || 1;
+    const scale =
+      melodyEnd > 0 && melodyEnd < durationSeconds
+        ? durationSeconds / melodyEnd
+        : 1;
+
+    const midiData: MidiTrackData = {
+      instrument: "lead",
+      bpm: analysis.tempo,
+      key: analysis.key,
+      timeSignature: "4/4",
+      durationSeconds,
+      notes: analysis.melody.map((n) => ({
+        note: n.note,
+        time: n.time * scale,
+        duration: Math.max(0.1, n.duration * scale),
+        velocity: Math.min(1, Math.max(0, n.velocity)),
+      })),
+    };
+
+    const invalidNotes = validateMidiNotes(midiData.notes);
+    if (invalidNotes.length > 0) {
+      midiData.notes = midiData.notes.filter(
+        (n) => !invalidNotes.includes(n.note)
+      );
+    }
+    if (midiData.notes.length === 0) {
+      // Fall back to API if transcribed notes invalid (use analysis without melody)
+      return generateMidiTrack(
+        { ...analysis, melody: undefined },
+        instrument,
+        durationSeconds
+      );
+    }
+
+    const audioBuffer = await renderMidiToAudioBuffer(midiData);
+    return { audioBuffer, midiData };
+  }
+
+  // Step 1: Get MIDI data from Gemini (pass transcribed hum melody when available)
   const res = await fetch("/api/generate-midi", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -27,6 +73,7 @@ export async function generateMidiTrack(
       genre: analysis.genre,
       instrument,
       durationSeconds,
+      melody: analysis.melody,
     }),
   });
 
