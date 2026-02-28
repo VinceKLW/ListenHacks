@@ -157,7 +157,16 @@ export default function HumRecorder() {
 
       // Generate individual layers via MIDI (avoid limiting to hum length)
       setStep("generating");
-      const defaultLayers = getDefaultLayers(analysis.genre);
+      let defaultLayers = getDefaultLayers(analysis.genre);
+      // Always prepend "lead" when we have a good melody transcription — this
+      // plays the user's exact hum back as a synth melody and anchors all other layers.
+      if (
+        analysis.melody &&
+        analysis.melody.length >= 4 &&
+        !defaultLayers.includes("lead" as InstrumentType)
+      ) {
+        defaultLayers = ["lead" as InstrumentType, ...defaultLayers];
+      }
       setGeneratingLayers(defaultLayers);
 
       // Create placeholder tracks for all layers
@@ -350,6 +359,17 @@ export default function HumRecorder() {
                 </motion.p>
               )}
             </AnimatePresence>
+
+            {/* TODO: remove this button before demo/production */}
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              onClick={() => setStep("studio")}
+              className="text-[9px] text-[#3A3A42] hover:text-[#505058] underline underline-offset-2 transition-colors"
+            >
+              skip (remove later)
+            </motion.button>
           </motion.div>
         )}
 
