@@ -4,6 +4,11 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Mic, Square } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, blobToAudioBuffer, getAudioContext } from "@/lib/audio-utils";
+import {
+  generateMidiTrack,
+  getMidiInstrumentColor,
+} from "@/lib/generate-midi-track";
+import { InstrumentType } from "@/types/midi";
 import { v4 as uuidv4 } from "uuid";
 
 function LevelMeter({ level }: { level: number }) {
@@ -33,10 +38,25 @@ function LevelMeter({ level }: { level: number }) {
   );
 }
 
+function getDefaultLayers(genre: string): InstrumentType[] {
+  const genreLayers: Record<string, InstrumentType[]> = {
+    pop: ["piano", "bass"],
+    electronic: ["lead", "bass", "pad"],
+    jazz: ["piano", "bass"],
+    classical: ["piano", "pad"],
+    hiphop: ["bass", "lead"],
+    rock: ["lead", "bass"],
+    rnb: ["piano", "bass", "pad"],
+    lofi: ["piano", "bass", "pad"],
+  };
+  return genreLayers[genre] || ["piano", "bass"];
+}
+
 export default function HumRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [generatingLayers, setGeneratingLayers] = useState<string[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -149,41 +169,48 @@ export default function HumRecorder() {
       const analysis = await analyzeRes.json();
       setAnalysis(analysis);
 
+      // Generate individual layers via MIDI
       setStep("generating");
-      const arrangementTrackId = uuidv4();
-      addTrack({
-        id: arrangementTrackId,
-        name: "AI Arrangement",
-        type: "arrangement",
-        audioUrl: null,
-        audioBuffer: null,
-        volume: 0.7,
-        muted: false,
-        solo: false,
-        color: "#00D4FF",
-        isLoading: true,
+      const defaultLayers = getDefaultLayers(analysis.genre);
+      setGeneratingLayers(defaultLayers);
+
+      // Create placeholder tracks for all layers
+      const layerTracks = defaultLayers.map((layer) => {
+        const id = uuidv4();
+        addTrack({
+          id,
+          name: `${layer.charAt(0).toUpperCase() + layer.slice(1)} (${analysis.key})`,
+          type: "midi",
+          audioUrl: null,
+          audioBuffer: null,
+          volume: layer === "bass" ? 0.65 : layer === "pad" ? 0.5 : 0.7,
+          muted: false,
+          solo: false,
+          color: getMidiInstrumentColor(layer),
+          isLoading: true,
+        });
+        return { id, instrument: layer };
       });
 
-      const genRes = await fetch("/api/generate-track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(analysis),
-      });
-
-      if (!genRes.ok) throw new Error("Generation failed");
-      const { trackUrl } = await genRes.json();
-
-      const proxiedUrl = `/api/proxy-audio?url=${encodeURIComponent(trackUrl)}`;
-      const audioRes = await fetch(proxiedUrl);
-      const arrayBuffer = await audioRes.arrayBuffer();
-      const audioCtx = getAudioContext();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-      updateTrack(arrangementTrackId, {
-        audioUrl: proxiedUrl,
-        audioBuffer: audioBuffer,
-        isLoading: false,
-      });
+      // Generate all layers in parallel
+      await Promise.allSettled(
+        layerTracks.map(async ({ id, instrument }) => {
+          try {
+            const { audioBuffer } = await generateMidiTrack(
+              analysis,
+              instrument as InstrumentType,
+              16
+            );
+            updateTrack(id, { audioBuffer, isLoading: false });
+          } catch (err) {
+            console.error(`Failed to generate ${instrument}:`, err);
+            updateTrack(id, {
+              isLoading: false,
+              name: `${instrument} (failed)`,
+            });
+          }
+        })
+      );
 
       setStep("studio");
     } catch (err) {
@@ -324,7 +351,6 @@ export default function HumRecorder() {
           </span>
 
           <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
-            {/* Progress bar style */}
             <div className="w-48 h-2 bg-[#0D0D0F] rounded overflow-hidden">
               <div
                 className="h-full rounded"
@@ -336,12 +362,17 @@ export default function HumRecorder() {
               />
             </div>
             <span className="text-[11px] led-green animate-led-pulse">
-              GENERATING ARRANGEMENT...
+              GENERATING LAYERS...
             </span>
+            {generatingLayers.length > 0 && (
+              <span className="text-[10px] text-[#505058] uppercase tracking-wider">
+                {generatingLayers.join(" · ")}
+              </span>
+            )}
           </div>
 
           <p className="text-[10px] text-[#505058]">
-            Creating a full arrangement. This may take up to 60 seconds.
+            Rendering instrument layers. This may take a moment.
           </p>
         </div>
       )}

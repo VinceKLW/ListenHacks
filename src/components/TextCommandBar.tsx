@@ -4,12 +4,22 @@ import { useState } from "react";
 import { Send, Loader2 } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { base64ToAudioBuffer } from "@/lib/audio-utils";
+import {
+  generateMidiTrack,
+  getMidiInstrumentColor,
+  detectInstrumentFromDescription,
+} from "@/lib/generate-midi-track";
 import { v4 as uuidv4 } from "uuid";
+
+const PERCUSSION_KEYWORDS = [
+  "drum", "beat", "percussion", "hi-hat", "kick",
+  "snare", "clap", "cymbal", "tom", "shaker", "tambourine",
+];
 
 export default function TextCommandBar() {
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const { step, addTrack, updateTrack } = useTracksStore();
+  const { step, addTrack, updateTrack, analysis } = useTracksStore();
 
   if (step !== "studio") return null;
 
@@ -21,51 +31,100 @@ export default function TextCommandBar() {
     setInput("");
     setIsProcessing(true);
 
+    const lowerDesc = description.toLowerCase();
+    const isPercussion = PERCUSSION_KEYWORDS.some((kw) => lowerDesc.includes(kw));
     const newTrackId = uuidv4();
-    const isBeat =
-      description.toLowerCase().includes("drum") ||
-      description.toLowerCase().includes("beat") ||
-      description.toLowerCase().includes("percussion") ||
-      description.toLowerCase().includes("hi-hat") ||
-      description.toLowerCase().includes("kick");
 
-    addTrack({
-      id: newTrackId,
-      name: description,
-      type: isBeat ? "beat" : "instrument",
-      audioUrl: null,
-      audioBuffer: null,
-      volume: 0.7,
-      muted: false,
-      solo: false,
-      color: isBeat ? "#FFB800" : "#00FF87",
-      isLoading: true,
-    });
-
-    try {
-      const beatRes = await fetch("/api/generate-beat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description,
-          durationSeconds: 8,
-        }),
+    if (isPercussion) {
+      // --- ElevenLabs path for percussion ---
+      addTrack({
+        id: newTrackId,
+        name: description,
+        type: "beat",
+        audioUrl: null,
+        audioBuffer: null,
+        volume: 0.7,
+        muted: false,
+        solo: false,
+        color: "#ea580c",
+        isLoading: true,
       });
 
-      if (!beatRes.ok) throw new Error("Generation failed");
-      const { audioBase64 } = await beatRes.json();
-      const audioBuffer = await base64ToAudioBuffer(audioBase64, "audio/mpeg");
+      try {
+        const beatRes = await fetch("/api/generate-beat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description, durationSeconds: 8 }),
+        });
+        if (!beatRes.ok) throw new Error("Generation failed");
+        const { audioBase64 } = await beatRes.json();
+        const audioBuffer = await base64ToAudioBuffer(audioBase64, "audio/mpeg");
+        updateTrack(newTrackId, { audioBuffer, isLoading: false });
+      } catch (err) {
+        console.error("Beat generation error:", err);
+        updateTrack(newTrackId, {
+          isLoading: false,
+          name: `${description} (failed)`,
+        });
+      }
+    } else if (analysis) {
+      // --- MIDI path for melodic instruments ---
+      const instrument = detectInstrumentFromDescription(description);
+      addTrack({
+        id: newTrackId,
+        name: description,
+        type: "midi",
+        audioUrl: null,
+        audioBuffer: null,
+        volume: 0.7,
+        muted: false,
+        solo: false,
+        color: getMidiInstrumentColor(instrument),
+        isLoading: true,
+      });
 
-      updateTrack(newTrackId, {
-        audioBuffer,
-        isLoading: false,
+      try {
+        const { audioBuffer } = await generateMidiTrack(analysis, instrument, 16);
+        updateTrack(newTrackId, { audioBuffer, isLoading: false });
+      } catch (err) {
+        console.error("MIDI generation error:", err);
+        updateTrack(newTrackId, {
+          isLoading: false,
+          name: `${description} (failed)`,
+        });
+      }
+    } else {
+      // --- Fallback to ElevenLabs if no analysis yet ---
+      addTrack({
+        id: newTrackId,
+        name: description,
+        type: "instrument",
+        audioUrl: null,
+        audioBuffer: null,
+        volume: 0.7,
+        muted: false,
+        solo: false,
+        color: "#059669",
+        isLoading: true,
       });
-    } catch (err) {
-      console.error("Text command error:", err);
-      updateTrack(newTrackId, {
-        isLoading: false,
-        name: `${description} (failed)`,
-      });
+
+      try {
+        const beatRes = await fetch("/api/generate-beat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description, durationSeconds: 8 }),
+        });
+        if (!beatRes.ok) throw new Error("Generation failed");
+        const { audioBase64 } = await beatRes.json();
+        const audioBuffer = await base64ToAudioBuffer(audioBase64, "audio/mpeg");
+        updateTrack(newTrackId, { audioBuffer, isLoading: false });
+      } catch (err) {
+        console.error("Fallback generation error:", err);
+        updateTrack(newTrackId, {
+          isLoading: false,
+          name: `${description} (failed)`,
+        });
+      }
     }
 
     setIsProcessing(false);

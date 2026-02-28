@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const { audioBase64, mimeType } = await req.json();
 
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const result = await model.generateContent([
       {
@@ -23,16 +23,24 @@ Listen to their speech and extract the command. Return ONLY valid JSON with no m
 {
   "action": "<one of: add_beat, add_instrument, change_mood, remove_track, change_tempo, export>",
   "description": "<clear description of the sound or change requested>",
+  "instrument": "<for add_instrument only: one of piano, bass, pad, lead, melody>",
   "value": "<optional numeric or string value, e.g. tempo number>"
 }
 
-Examples of expected outputs:
-- User says "add some trap drums" -> {"action":"add_beat","description":"trap kick and hi-hat drum pattern, 4 bars loop"}
-- User says "add a bass line" -> {"action":"add_instrument","description":"deep bass line groove"}
-- User says "make it more jazzy" -> {"action":"change_mood","description":"jazz"}
-- User says "add electric guitar" -> {"action":"add_instrument","description":"electric guitar riff melody"}
-- User says "add piano chords" -> {"action":"add_instrument","description":"piano chord progression"}
-- User says "export" or "download" -> {"action":"export","description":"export final mix"}`,
+IMPORTANT: Use "add_beat" for percussion/rhythm sounds (drums, kicks, snares, claps, hi-hats).
+Use "add_instrument" for melodic/harmonic sounds (piano, bass, pads, synths, lead, melody).
+For add_instrument, always include the "instrument" field.
+
+Examples:
+- "add some trap drums" -> {"action":"add_beat","description":"trap kick and hi-hat drum pattern"}
+- "add kicks" -> {"action":"add_beat","description":"punchy 808 kick drum pattern"}
+- "add a clap" -> {"action":"add_beat","description":"sharp snare clap on beats 2 and 4"}
+- "add a bass line" -> {"action":"add_instrument","description":"deep bass line groove","instrument":"bass"}
+- "add piano chords" -> {"action":"add_instrument","description":"piano chord progression","instrument":"piano"}
+- "add synth pads" -> {"action":"add_instrument","description":"atmospheric synth pad chords","instrument":"pad"}
+- "add a lead melody" -> {"action":"add_instrument","description":"catchy lead synth melody","instrument":"lead"}
+- "make it more jazzy" -> {"action":"change_mood","description":"jazz"}
+- "export" or "download" -> {"action":"export","description":"export final mix"}`,
     ]);
 
     const text = result.response.text();
