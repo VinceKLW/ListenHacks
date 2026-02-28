@@ -1,3 +1,5 @@
+import type { TrackEffects } from "./effects";
+
 export interface Track {
   id: string;
   name: string;
@@ -9,6 +11,7 @@ export interface Track {
   solo: boolean;
   color: string;
   isLoading: boolean;
+  effects?: TrackEffects;
 }
 
 export interface MusicalAnalysisNote {

@@ -1,9 +1,12 @@
+import * as Tone from "tone";
 import { Track } from "@/types/music";
 import { getAudioContext, audioBufferToWavBlob } from "./audio-utils";
+import { connectWithEffects } from "./effects-processor";
 
 class Mixer {
   private sources: Map<string, AudioBufferSourceNode> = new Map();
   private gains: Map<string, GainNode> = new Map();
+  private effectCleanups: Map<string, () => void> = new Map();
   private onEndCallback: (() => void) | null = null;
   private endTimeout: ReturnType<typeof setTimeout> | null = null;
   private _startContextTime: number = 0;
@@ -63,7 +66,19 @@ class Mixer {
       const gain = ctx.createGain();
       source.buffer = track.audioBuffer;
       gain.gain.value = track.volume;
-      source.connect(gain).connect(ctx.destination);
+
+      const hasEffects =
+        track.effects &&
+        Object.values(track.effects).some(
+          (e) => e && typeof e === "object" && "enabled" in e && (e as { enabled: boolean }).enabled
+        );
+      if (hasEffects) {
+        const cleanup = connectWithEffects(source, track, gain, ctx);
+        this.effectCleanups.set(track.id, cleanup);
+      } else {
+        source.connect(gain);
+      }
+      gain.connect(ctx.destination);
 
       const trackDuration = track.audioBuffer.duration;
       if (offset < trackDuration) {
@@ -100,6 +115,8 @@ class Mixer {
       this.endTimeout = null;
     }
     this._startContextTime = 0;
+    this.effectCleanups.forEach((cleanup) => cleanup());
+    this.effectCleanups.clear();
     this.sources.forEach((source) => {
       try {
         source.stop();
@@ -180,12 +197,25 @@ class Mixer {
       sampleRate
     );
 
+    Tone.setContext(offlineCtx as unknown as AudioContext);
+
     activeTracks.forEach((track) => {
       const source = offlineCtx.createBufferSource();
       const gain = offlineCtx.createGain();
       source.buffer = track.audioBuffer!;
       gain.gain.value = track.volume;
-      source.connect(gain).connect(offlineCtx.destination);
+
+      const hasEffects =
+        track.effects &&
+        Object.values(track.effects).some(
+          (e) => e && typeof e === "object" && "enabled" in e && (e as { enabled: boolean }).enabled
+        );
+      if (hasEffects) {
+        connectWithEffects(source, track, gain, offlineCtx);
+      } else {
+        source.connect(gain);
+      }
+      gain.connect(offlineCtx.destination);
       source.start(0);
     });
 

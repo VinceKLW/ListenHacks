@@ -10,6 +10,7 @@ interface TracksStore {
   humAudioBlob: Blob | null;
 
   isPlaying: boolean;
+  selectedTrackId: string | null;
 
   setHumBlob: (blob: Blob) => void;
   setAnalysis: (analysis: MusicalAnalysis) => void;
@@ -17,6 +18,7 @@ interface TracksStore {
   updateTrack: (id: string, updates: Partial<Track>) => void;
   removeTrack: (id: string) => void;
   setPlaying: (playing: boolean) => void;
+  setSelectedTrackId: (id: string | null) => void;
   reset: () => void;
 }
 
@@ -28,6 +30,7 @@ export const useTracksStore = create<TracksStore>((set) => ({
   analysis: null,
   humAudioBlob: null,
   isPlaying: false,
+  selectedTrackId: null,
 
   setHumBlob: (blob) => set({ humAudioBlob: blob }),
   setAnalysis: (analysis) => set({ analysis }),
@@ -45,9 +48,11 @@ export const useTracksStore = create<TracksStore>((set) => ({
   removeTrack: (id) =>
     set((state) => ({
       tracks: state.tracks.filter((t) => t.id !== id),
+      selectedTrackId: state.selectedTrackId === id ? null : state.selectedTrackId,
     })),
 
   setPlaying: (playing) => set({ isPlaying: playing }),
+  setSelectedTrackId: (id) => set({ selectedTrackId: id }),
 
   reset: () =>
     set({
@@ -56,5 +61,6 @@ export const useTracksStore = create<TracksStore>((set) => ({
       analysis: null,
       humAudioBlob: null,
       isPlaying: false,
+      selectedTrackId: null,
     }),
 }));

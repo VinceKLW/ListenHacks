@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import HumRecorder from "@/components/HumRecorder";
 import TrackList from "@/components/TrackList";
 import MasterTrack from "@/components/MasterTrack";
+import EffectsSidebar from "@/components/EffectsSidebar";
 import VoiceCommandBar from "@/components/VoiceCommandBar";
 import TextCommandBar from "@/components/TextCommandBar";
 import TransportBar from "@/components/TransportBar";
@@ -103,10 +104,13 @@ export default function Home() {
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.1 }}
             >
-              {/* Master + Mixer Area */}
-              <div className="flex-1 overflow-auto px-3 py-3">
-                <MasterTrack />
-                <TrackList />
+              {/* Master + Mixer Area + Effects Sidebar */}
+              <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 overflow-auto px-3 py-3">
+                  <MasterTrack />
+                  <TrackList />
+                </div>
+                <EffectsSidebar />
               </div>
 
               {/* Bottom: Command Input */}

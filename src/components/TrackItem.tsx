@@ -32,7 +32,8 @@ const typeColors: Record<string, string> = {
 export default function TrackItem({ track }: TrackItemProps) {
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
-  const { tracks, isPlaying, updateTrack, removeTrack } = useTracksStore();
+  const { tracks, isPlaying, updateTrack, removeTrack, selectedTrackId, setSelectedTrackId } = useTracksStore();
+  const isSelected = selectedTrackId === track.id;
 
   useEffect(() => {
     if (!waveformRef.current || !track.audioBuffer) return;
@@ -71,10 +72,19 @@ export default function TrackItem({ track }: TrackItemProps) {
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 transition-opacity ${
+      role="button"
+      tabIndex={0}
+      onClick={() => setSelectedTrackId(isSelected ? null : track.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setSelectedTrackId(isSelected ? null : track.id);
+        }
+      }}
+      className={`flex items-center gap-2 px-3 py-2 transition-opacity cursor-pointer ${
         track.muted ? "opacity-40" : ""
-      }`}
-      style={{ backgroundColor: track.muted ? "#131316" : "#1A1A1E" }}
+      } ${isSelected ? "ring-1 ring-[#00D4FF] ring-inset" : ""}`}
+      style={{ backgroundColor: track.muted ? "#131316" : isSelected ? "#1E2934" : "#1A1A1E" }}
     >
       {/* Channel Info */}
       <div className="w-[140px] shrink-0 flex items-center gap-2">
@@ -134,7 +144,8 @@ export default function TrackItem({ track }: TrackItemProps) {
         {/* Mute Button */}
         <motion.button
           whileTap={{ scale: 0.88 }}
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             const newMuted = !track.muted;
             updateTrack(track.id, { muted: newMuted });
             if (isPlaying) {
@@ -156,7 +167,8 @@ export default function TrackItem({ track }: TrackItemProps) {
         {/* Solo Button */}
         <motion.button
           whileTap={{ scale: 0.88 }}
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             const newSolo = !track.solo;
             updateTrack(track.id, { solo: newSolo });
             if (isPlaying) {
@@ -176,7 +188,7 @@ export default function TrackItem({ track }: TrackItemProps) {
         </motion.button>
 
         {/* Volume Fader */}
-        <div className="flex-1 flex items-center gap-2 channel-fader">
+        <div className="flex-1 flex items-center gap-2 channel-fader" onClick={(e) => e.stopPropagation()}>
           <Slider
             value={[track.volume * 100]}
             max={100}
@@ -200,7 +212,10 @@ export default function TrackItem({ track }: TrackItemProps) {
         <motion.button
           whileTap={{ scale: 0.88 }}
           whileHover={{ borderColor: "rgba(255, 59, 48, 0.3)" }}
-          onClick={() => removeTrack(track.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            removeTrack(track.id);
+          }}
           className="w-6 h-6 flex items-center justify-center rounded bg-[#232328] border border-[#2A2A2E] text-[#505058] hover:text-[#FF3B30] transition-colors"
         >
           <Trash2 className="w-3 h-3" />
