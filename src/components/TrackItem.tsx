@@ -70,7 +70,7 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
     return () => {
       ws.destroy();
     };
-  }, [track.audioBuffer, track.color, track.type]);
+  }, [track.audioBuffer, track.color, track.type, track.startOffset]);
 
   // Stop preview on unmount
   useEffect(() => {
@@ -103,6 +103,13 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
     previewSourceRef.current = source;
     setIsPreviewPlaying(true);
   };
+
+  const sessionDuration = mixer.getDuration(tracks);
+  const startOff = track.startOffset ?? 0;
+  const audioDur = track.audioBuffer?.duration ?? 0;
+  const clipLeftPct = sessionDuration > 0 ? (startOff / sessionDuration) * 100 : 0;
+  const clipWidthPct =
+    sessionDuration > 0 && audioDur > 0 ? (audioDur / sessionDuration) * 100 : 100;
 
   const color = typeColors[track.type] || track.color;
   const dbValue = track.volume > 0 ? (20 * Math.log10(track.volume)).toFixed(1) : "-inf";
@@ -177,9 +184,12 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
       </div>
 
       {/* Waveform Display */}
-      <div className="flex-1 min-w-0 daw-panel-recessed rounded px-2 py-1 relative">
+      <div
+        className="flex-1 min-w-0 daw-panel-recessed rounded relative overflow-hidden"
+        style={{ height: 52 }}
+      >
         {track.isLoading ? (
-          <div className="flex items-center justify-center h-10 gap-2">
+          <div className="absolute inset-0 flex items-center justify-center gap-2">
             <div className="flex gap-[2px]">
               {[14, 22, 10, 20, 16, 24, 12, 18].map((h, i) => (
                 <motion.div
@@ -201,22 +211,35 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
           </div>
         ) : (
           <>
-            <div ref={waveformRef} className="w-full" />
+            {/* Clip block — positioned by session time (Ableton-style) */}
+            {track.audioBuffer && (
+              <div
+                className="absolute top-[6px] bottom-[6px] rounded overflow-hidden"
+                style={{
+                  left: `${clipLeftPct}%`,
+                  width: `${Math.max(clipWidthPct, 0.8)}%`,
+                  backgroundColor: `${color}08`,
+                  borderLeft: `2px solid ${color}50`,
+                }}
+              >
+                <div ref={waveformRef} style={{ width: "100%", height: "100%" }} />
+              </div>
+            )}
 
-            {/* Selection overlays — one per active selection on this track */}
+            {/* Selection overlays — session-absolute positioning */}
             {track.audioBuffer && timeSelections
               .filter((s) => s.trackId === track.id)
               .map((sel) => {
-                const dur = track.audioBuffer!.duration;
-                const startPct = Math.max(0, (sel.start / dur) * 100);
-                const widthPct = Math.min(100 - startPct, ((sel.end - sel.start) / dur) * 100);
+                const refDur = sessionDuration > 0 ? sessionDuration : track.audioBuffer!.duration;
+                const leftPct = Math.max(0, (sel.start / refDur) * 100);
+                const wPct = Math.min(100 - leftPct, ((sel.end - sel.start) / refDur) * 100);
                 return (
                   <div
                     key={sel.id}
                     className="absolute top-0 bottom-0 pointer-events-none z-10 rounded"
                     style={{
-                      left: `${startPct}%`,
-                      width: `${widthPct}%`,
+                      left: `${leftPct}%`,
+                      width: `${wPct}%`,
                       background: "rgba(0,212,255,0.15)",
                       borderLeft: "1.5px solid rgba(0,212,255,0.8)",
                       borderRight: "1.5px solid rgba(0,212,255,0.8)",
@@ -225,14 +248,14 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
                 );
               })}
 
-            {/* Drag-to-select hit area — z-20 ensures it sits above WaveSurfer canvas */}
+            {/* Drag-to-select hit area — stores session-absolute times */}
             <div
               className="absolute inset-0 cursor-crosshair z-20 hover:bg-white/[0.03] transition-colors"
               title="Drag to select a time range"
               onMouseDown={(e) => {
                 e.stopPropagation();
-                if (!track.audioBuffer) return;
-                const dur = track.audioBuffer.duration;
+                const refDur = sessionDuration > 0 ? sessionDuration : (track.audioBuffer?.duration ?? 0);
+                if (refDur <= 0) return;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const startX = e.clientX - rect.left;
                 let didDrag = false;
@@ -246,8 +269,8 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
                   window.removeEventListener("mouseup", handleMouseUp);
                   if (didDrag) {
                     const endX = ev.clientX - rect.left;
-                    const startSec = Math.max(0, (Math.min(startX, endX) / rect.width) * dur);
-                    const endSec = Math.min(dur, (Math.max(startX, endX) / rect.width) * dur);
+                    const startSec = Math.max(0, (Math.min(startX, endX) / rect.width) * refDur);
+                    const endSec = Math.min(refDur, (Math.max(startX, endX) / rect.width) * refDur);
                     addTimeSelection({ start: startSec, end: endSec, trackId: track.id });
                   }
                 };

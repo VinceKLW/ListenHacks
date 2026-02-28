@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
     }
 
     const duration = durationSeconds || 16;
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: { responseMimeType: "application/json" },
+    });
 
     const prompt = buildMidiPrompt({
       key,
@@ -36,14 +39,7 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await model.generateContent(prompt);
-    const text = result.response.text();
-
-    const cleaned = text
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
-
-    const midiData = JSON.parse(cleaned);
+    const midiData = JSON.parse(result.response.text());
 
     // Validate structure
     if (
@@ -76,7 +72,7 @@ export async function POST(req: NextRequest) {
     const err = error as { message?: string };
     console.error("Generate MIDI error:", error);
     return NextResponse.json(
-      { error: "Failed to generate MIDI data", details: err.message },
+      { error: err.message || "Failed to generate MIDI data" },
       { status: 500 }
     );
   }
