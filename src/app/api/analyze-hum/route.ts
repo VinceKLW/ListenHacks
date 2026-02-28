@@ -9,7 +9,6 @@ export async function POST(req: NextRequest) {
 
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      generationConfig: { responseMimeType: "application/json" },
     });
 
     const result = await model.generateContent([
@@ -44,7 +43,12 @@ The "melody" array must contain the transcribed notes of what the user hummed. I
 and up to 60 notes. Times should be in seconds (0 to recording length). Use velocity 0.6-0.9.`,
     ]);
 
-    const analysis = JSON.parse(result.response.text());
+    const text = result.response.text();
+    const cleaned = text
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    const analysis = JSON.parse(cleaned);
 
     // Validate melody if present
     if (analysis.melody && Array.isArray(analysis.melody)) {

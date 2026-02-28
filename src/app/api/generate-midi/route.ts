@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const duration = durationSeconds || 16;
+    const duration = Math.max(1.0, durationSeconds || 16);
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       generationConfig: { responseMimeType: "application/json" },
@@ -175,7 +175,7 @@ CRITICAL RULES:
 2. Note names must use standard format: C, D, E, F, G, A, B with optional # or b and octave number (e.g., "C4", "Eb3", "F#5")
 3. Velocity values must be between 0.0 and 1.0 (use 0.5-0.9 for most notes)
 4. Keep the part musically coherent and rhythmically aligned to the tempo grid
-5. Generate at least 8 notes and no more than 200 notes
+5. Generate at least ${Math.max(4, Math.min(16, Math.round(duration * 2)))} notes and no more than 200 notes
 6. Times should align to the beat grid: one beat = ${(60 / tempo).toFixed(4)} seconds
 
 Return ONLY valid JSON with no markdown formatting, no code fences, no extra text:

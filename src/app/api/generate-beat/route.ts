@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           text: description,
-          duration_seconds: durationSeconds || 8.0,
+          duration_seconds: Math.max(0.5, Math.min(22, durationSeconds || 8.0)),
           prompt_influence: 0.5,
         }),
       }

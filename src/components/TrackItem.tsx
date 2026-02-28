@@ -209,6 +209,10 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
               Generating...
             </span>
           </div>
+        ) : !track.audioBuffer ? (
+          <div className="absolute inset-0 flex items-center justify-center gap-1.5">
+            <span className="text-[9px] uppercase tracking-wider text-[#FF3B30]/60">Generation failed</span>
+          </div>
         ) : (
           <>
             {/* Clip block — positioned by session time (Ableton-style) */}
