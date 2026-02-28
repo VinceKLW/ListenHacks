@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import HumRecorder from "@/components/HumRecorder";
 import TrackList from "@/components/TrackList";
 import MasterTrack from "@/components/MasterTrack";
@@ -19,9 +20,21 @@ export default function Home() {
           {/* Left: Logo */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-[#00FF87] shadow-[0_0_6px_#00FF87]" />
-              <div className="w-2 h-2 rounded-full bg-[#00D4FF] shadow-[0_0_6px_#00D4FF]" />
-              <div className="w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_6px_#A855F7]" />
+              <motion.div
+                className="w-2 h-2 rounded-full bg-[#00FF87] shadow-[0_0_6px_#00FF87]"
+                animate={{ opacity: [1, 0.5, 1] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.div
+                className="w-2 h-2 rounded-full bg-[#00D4FF] shadow-[0_0_6px_#00D4FF]"
+                animate={{ opacity: [1, 0.5, 1] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+              />
+              <motion.div
+                className="w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_6px_#A855F7]"
+                animate={{ opacity: [1, 0.5, 1] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+              />
             </div>
             <h1 className="font-[family-name:var(--font-display)] text-sm font-bold tracking-[0.12em] uppercase text-[#E0E0E4]">
               Hum Producer
@@ -29,17 +42,37 @@ export default function Home() {
           </div>
 
           {/* Center: Transport (only in studio) */}
-          {step === "studio" && <TransportBar />}
+          <AnimatePresence>
+            {step === "studio" && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              >
+                <TransportBar />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Right: Info */}
           <div className="flex items-center gap-4">
             <div className="lcd-display px-2.5 py-1 flex items-center gap-2">
               <span className="text-[10px] text-[#505058] uppercase tracking-wider">Status</span>
-              <span className={`text-[10px] font-medium ${
-                step === "studio" ? "led-green" : step === "record" ? "text-[#808088]" : "led-amber"
-              }`}>
-                {step === "record" ? "READY" : step === "analyzing" ? "ANALYZING" : step === "generating" ? "GENERATING" : "ONLINE"}
-              </span>
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={step}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2 }}
+                  className={`text-[10px] font-medium ${
+                    step === "studio" ? "led-green" : "text-[#808088]"
+                  }`}
+                >
+                  {step === "studio" ? "ONLINE" : "READY"}
+                </motion.span>
+              </AnimatePresence>
             </div>
             <span className="text-[9px] text-[#505058] tracking-wider uppercase">
               ListenHacks 2025
@@ -50,29 +83,49 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
-        {step !== "studio" ? (
-          <div className="h-full flex items-center justify-center">
-            <HumRecorder />
-          </div>
-        ) : (
-          <div className="h-full flex flex-col">
-            {/* Master + Mixer Area */}
-            <div className="flex-1 overflow-auto px-3 py-3">
-              <MasterTrack />
-              <TrackList />
-            </div>
-
-            {/* Bottom: Command Input */}
-            <div className="shrink-0 border-t border-[#2A2A2E] bg-[#1A1A1E] px-3 py-3">
-              <div className="max-w-5xl mx-auto flex gap-3">
-                <div className="flex-1">
-                  <TextCommandBar />
-                </div>
-                <VoiceCommandBar />
+        <AnimatePresence mode="wait">
+          {step !== "studio" ? (
+            <motion.div
+              key="recorder"
+              className="h-full flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3 }}
+            >
+              <HumRecorder />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="studio"
+              className="h-full flex flex-col"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              {/* Master + Mixer Area */}
+              <div className="flex-1 overflow-auto px-3 py-3">
+                <MasterTrack />
+                <TrackList />
               </div>
-            </div>
-          </div>
-        )}
+
+              {/* Bottom: Command Input */}
+              <motion.div
+                className="shrink-0 border-t border-[#2A2A2E] bg-[#1A1A1E] px-3 py-3"
+                initial={{ y: 40, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.3 }}
+              >
+                <div className="max-w-5xl mx-auto flex gap-3">
+                  <div className="flex-1">
+                    <TextCommandBar />
+                  </div>
+                  <VoiceCommandBar />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import { Send, Loader2 } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { base64ToAudioBuffer } from "@/lib/audio-utils";
@@ -87,9 +88,11 @@ export default function TextCommandBar() {
           disabled={isProcessing}
         />
       </div>
-      <button
+      <motion.button
         type="submit"
         disabled={!input.trim() || isProcessing}
+        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.05 }}
         className="w-10 h-10 rounded flex items-center justify-center bg-[#232328] border border-[#2A2A2E] text-[#00FF87] hover:bg-[#2C2C33] hover:border-[#00FF87]/30 disabled:opacity-30 disabled:hover:bg-[#232328] transition-all"
       >
         {isProcessing ? (
@@ -97,7 +100,7 @@ export default function TextCommandBar() {
         ) : (
           <Send className="w-4 h-4" />
         )}
-      </button>
+      </motion.button>
     </form>
   );
 }

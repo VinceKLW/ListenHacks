@@ -17,6 +17,7 @@ interface TracksStore {
   updateTrack: (id: string, updates: Partial<Track>) => void;
   removeTrack: (id: string) => void;
   setPlaying: (playing: boolean) => void;
+  reset: () => void;
 }
 
 export const useTracksStore = create<TracksStore>((set) => ({
@@ -47,4 +48,13 @@ export const useTracksStore = create<TracksStore>((set) => ({
     })),
 
   setPlaying: (playing) => set({ isPlaying: playing }),
+
+  reset: () =>
+    set({
+      step: "record",
+      tracks: [],
+      analysis: null,
+      humAudioBlob: null,
+      isPlaying: false,
+    }),
 }));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Mic, Loader2 } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, base64ToAudioBuffer } from "@/lib/audio-utils";
@@ -130,9 +131,11 @@ export default function VoiceCommandBar() {
   return (
     <div className="flex items-center gap-2">
       {/* Voice Command Button */}
-      <button
+      <motion.button
         disabled={isProcessing}
         onClick={isRecording ? stopRecording : startRecording}
+        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.05 }}
         className={`w-10 h-10 rounded flex items-center justify-center transition-all ${
           isRecording
             ? "bg-[#FF3B30]/20 border border-[#FF3B30]/40 recording-pulse"
@@ -146,13 +149,21 @@ export default function VoiceCommandBar() {
         ) : (
           <Mic className={`w-4 h-4 ${isRecording ? "text-[#FF3B30]" : "text-[#A855F7]"}`} />
         )}
-      </button>
+      </motion.button>
 
-      {statusText && (
-        <div className="lcd-display px-2 py-1">
-          <span className="text-[9px] led-cyan">{statusText}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {statusText && (
+          <motion.div
+            initial={{ opacity: 0, x: -8, width: 0 }}
+            animate={{ opacity: 1, x: 0, width: "auto" }}
+            exit={{ opacity: 0, x: -8, width: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            className="lcd-display px-2 py-1 overflow-hidden"
+          >
+            <span className="text-[9px] led-cyan whitespace-nowrap">{statusText}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

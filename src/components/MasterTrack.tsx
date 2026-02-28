@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
+import { motion } from "motion/react";
 import { useTracksStore } from "@/store/tracks";
 import { mixer } from "@/lib/mixer";
 
@@ -28,10 +29,6 @@ export default function MasterTrack() {
     });
     return unsub;
   }, [isPlaying, isDragging]);
-
-  // Keep position where it is when stopped (don't reset to 0)
-  // Only reset to 0 if there's no valid position from seeking
-
 
   // Draw composite waveform
   useEffect(() => {
@@ -173,7 +170,12 @@ export default function MasterTrack() {
   const progressPct = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
-    <div className="max-w-5xl mx-auto mb-2">
+    <motion.div
+      className="max-w-5xl mx-auto mb-2"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+    >
       <div className="flex items-center justify-between mb-1 px-1">
         <div className="flex items-center gap-2">
           <span className="text-[10px] uppercase tracking-[0.12em] text-[#505058] font-[family-name:var(--font-display)] font-semibold">
@@ -260,6 +262,6 @@ export default function MasterTrack() {
           />
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

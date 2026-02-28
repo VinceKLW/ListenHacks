@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Mic, Square } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, blobToAudioBuffer, getAudioContext } from "@/lib/audio-utils";
@@ -18,14 +19,15 @@ function LevelMeter({ level }: { level: number }) {
         else if (i >= segments - 5) color = "#FFB800";
 
         return (
-          <div
+          <motion.div
             key={i}
-            className="h-[3px] rounded-[1px] transition-opacity duration-75"
-            style={{
-              backgroundColor: color,
+            className="h-[3px] rounded-[1px]"
+            animate={{
               opacity: active ? 1 : 0.1,
               boxShadow: active ? `0 0 4px ${color}40` : "none",
             }}
+            transition={{ duration: 0.05 }}
+            style={{ backgroundColor: color }}
           />
         );
       })}
@@ -43,7 +45,7 @@ export default function HumRecorder() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  const { step, setStep, setHumBlob, setAnalysis, addTrack, updateTrack } =
+  const { step, setStep, setHumBlob, setAnalysis, addTrack } =
     useTracksStore();
 
   const updateLevel = useCallback(() => {
@@ -116,8 +118,6 @@ export default function HumRecorder() {
   }, []);
 
   const processHum = async (blob: Blob) => {
-    setStep("analyzing");
-
     const humTrackId = uuidv4();
     const humBuffer = await blobToAudioBuffer(blob);
     addTrack({
@@ -133,6 +133,10 @@ export default function HumRecorder() {
       isLoading: false,
     });
 
+    // Go straight to studio
+    setStep("studio");
+
+    // Analyze in the background so analysis metadata appears in transport bar
     try {
       const audioBase64 = await blobToBase64(blob);
       const analyzeRes = await fetch("/api/analyze-hum", {
@@ -141,210 +145,164 @@ export default function HumRecorder() {
         body: JSON.stringify({ audioBase64, mimeType: "audio/webm" }),
       });
 
-      if (!analyzeRes.ok) {
-        const errBody = await analyzeRes.json().catch(() => ({}));
-        console.error("Analyze API error:", errBody);
-        throw new Error(errBody.detail || "Analysis failed");
+      if (analyzeRes.ok) {
+        const analysis = await analyzeRes.json();
+        setAnalysis(analysis);
       }
-      const analysis = await analyzeRes.json();
-      setAnalysis(analysis);
-
-      setStep("generating");
-      const arrangementTrackId = uuidv4();
-      addTrack({
-        id: arrangementTrackId,
-        name: "AI Arrangement",
-        type: "arrangement",
-        audioUrl: null,
-        audioBuffer: null,
-        volume: 0.7,
-        muted: false,
-        solo: false,
-        color: "#00D4FF",
-        isLoading: true,
-      });
-
-      const genRes = await fetch("/api/generate-track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(analysis),
-      });
-
-      if (!genRes.ok) throw new Error("Generation failed");
-      const { trackUrl } = await genRes.json();
-
-      const proxiedUrl = `/api/proxy-audio?url=${encodeURIComponent(trackUrl)}`;
-      const audioRes = await fetch(proxiedUrl);
-      const arrayBuffer = await audioRes.arrayBuffer();
-      const audioCtx = getAudioContext();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-      updateTrack(arrangementTrackId, {
-        audioUrl: proxiedUrl,
-        audioBuffer: audioBuffer,
-        isLoading: false,
-      });
-
-      setStep("studio");
     } catch (err) {
-      console.error("Processing error:", err);
-      setStep("studio");
+      console.error("Analysis error:", err);
     }
   };
 
-  if (step !== "record" && step !== "analyzing" && step !== "generating") {
+  if (step !== "record") {
     return null;
   }
 
+  const panelVariants = {
+    initial: { opacity: 0, scale: 0.95, y: 12 },
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: { opacity: 0, scale: 0.95, y: -12 },
+  };
+
   return (
     <div className="flex flex-col items-center gap-6">
-      {step === "record" && (
-        <div className="daw-panel rounded-lg p-8 flex flex-col items-center gap-6 relative noise-overlay">
-          {/* Rack screws */}
-          <div className="absolute top-3 left-3 rack-screw" />
-          <div className="absolute top-3 right-3 rack-screw" />
-          <div className="absolute bottom-3 left-3 rack-screw" />
-          <div className="absolute bottom-3 right-3 rack-screw" />
+      <AnimatePresence mode="wait">
+        {step === "record" && (
+          <motion.div
+            key="record"
+            variants={panelVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="daw-panel rounded-lg p-8 flex flex-col items-center gap-6 relative noise-overlay"
+          >
+            {/* Rack screws */}
+            <div className="absolute top-3 left-3 rack-screw" />
+            <div className="absolute top-3 right-3 rack-screw" />
+            <div className="absolute bottom-3 left-3 rack-screw" />
+            <div className="absolute bottom-3 right-3 rack-screw" />
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
-              Input Channel
-            </span>
-          </div>
-
-          <div className="lcd-display px-6 py-3 text-center">
-            <p className="text-[11px] text-[#808088] uppercase tracking-wider mb-1">
-              Hum your melody
-            </p>
-            <p className="text-[10px] text-[#505058]">
-              Record 5-15 seconds. AI will analyze and produce a full track.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Left meter */}
-            <div className="h-20">
-              <LevelMeter level={audioLevel} />
-            </div>
-
-            {/* Record Button */}
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-                isRecording
-                  ? "bg-[#FF3B30] shadow-[0_0_20px_rgba(255,59,48,0.4)] recording-pulse"
-                  : "bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
-              }`}
+            <motion.div
+              className="flex items-center gap-2"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
             >
-              {isRecording ? (
-                <Square className="w-6 h-6 text-white" />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-[#FF3B30] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
-                  <Mic className="w-5 h-5 text-white" />
-                </div>
-              )}
-            </button>
-
-            {/* Right meter */}
-            <div className="h-20">
-              <LevelMeter level={audioLevel * 0.85} />
-            </div>
-          </div>
-
-          {/* Timer / Status */}
-          <div className="lcd-display px-4 py-1.5 min-w-[120px] text-center">
-            {isRecording ? (
-              <div className="flex items-center justify-center gap-2">
-                <div className="led-dot led-dot-red animate-led-pulse" />
-                <span className="text-sm led-red font-[tabular-nums]">
-                  {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, "0")}
-                </span>
-              </div>
-            ) : (
-              <span className="text-[10px] text-[#505058] uppercase tracking-wider">
-                Ready
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
+                Input Channel
               </span>
-            )}
-          </div>
+            </motion.div>
 
-          {!isRecording && (
-            <p className="text-[10px] text-[#505058] tracking-wider uppercase">
-              Tap to arm recording
-            </p>
-          )}
-        </div>
-      )}
+            <motion.div
+              className="lcd-display px-6 py-3 text-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.15 }}
+            >
+              <p className="text-[11px] text-[#808088] uppercase tracking-wider mb-1">
+                Hum your melody
+              </p>
+              <p className="text-[10px] text-[#505058]">
+                Record 5-15 seconds. AI will analyze and produce a full track.
+              </p>
+            </motion.div>
 
-      {step === "analyzing" && (
-        <div className="daw-panel rounded-lg p-8 flex flex-col items-center gap-5 relative noise-overlay">
-          <div className="absolute top-3 left-3 rack-screw" />
-          <div className="absolute top-3 right-3 rack-screw" />
-          <div className="absolute bottom-3 left-3 rack-screw" />
-          <div className="absolute bottom-3 right-3 rack-screw" />
+            <div className="flex items-center gap-4">
+              {/* Left meter */}
+              <div className="h-20">
+                <LevelMeter level={audioLevel} />
+              </div>
 
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
-            Signal Analysis
-          </span>
+              {/* Record Button */}
+              <motion.button
+                onClick={isRecording ? stopRecording : startRecording}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.92 }}
+                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+                  isRecording
+                    ? "bg-[#FF3B30] shadow-[0_0_20px_rgba(255,59,48,0.4)] recording-pulse"
+                    : "bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+                }`}
+              >
+                <AnimatePresence mode="wait">
+                  {isRecording ? (
+                    <motion.div
+                      key="stop"
+                      initial={{ scale: 0, rotate: -90 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      exit={{ scale: 0, rotate: 90 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                    >
+                      <Square className="w-6 h-6 text-white" />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="record"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      className="w-10 h-10 rounded-full bg-[#FF3B30] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
+                    >
+                      <Mic className="w-5 h-5 text-white" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.button>
 
-          {/* Animated analysis display */}
-          <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
-            <div className="flex gap-1">
-              {[18, 28, 14, 32, 22, 36, 16, 30, 20, 34, 12, 26, 24, 35, 15, 29, 21, 33, 17, 31, 19, 27, 23, 25].map((h, i) => (
-                <div
-                  key={i}
-                  className="w-1 rounded-full bg-[#00D4FF] animate-signal"
-                  style={{
-                    height: `${h}px`,
-                    animationDelay: `${i * 0.08}s`,
-                    opacity: 0.4 + (i % 3) * 0.2,
-                  }}
-                />
-              ))}
+              {/* Right meter */}
+              <div className="h-20">
+                <LevelMeter level={audioLevel * 0.85} />
+              </div>
             </div>
-            <span className="text-[11px] led-cyan animate-led-pulse">
-              ANALYZING SIGNAL...
-            </span>
-          </div>
 
-          <p className="text-[10px] text-[#505058]">
-            Detecting key, tempo, mood, and genre
-          </p>
-        </div>
-      )}
-
-      {step === "generating" && (
-        <div className="daw-panel rounded-lg p-8 flex flex-col items-center gap-5 relative noise-overlay">
-          <div className="absolute top-3 left-3 rack-screw" />
-          <div className="absolute top-3 right-3 rack-screw" />
-          <div className="absolute bottom-3 left-3 rack-screw" />
-          <div className="absolute bottom-3 right-3 rack-screw" />
-
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
-            Track Generator
-          </span>
-
-          <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
-            {/* Progress bar style */}
-            <div className="w-48 h-2 bg-[#0D0D0F] rounded overflow-hidden">
-              <div
-                className="h-full rounded"
-                style={{
-                  background: "linear-gradient(90deg, #00FF87, #00D4FF)",
-                  animation: "waveform-scan 2s ease-in-out infinite alternate",
-                  width: "60%",
-                }}
-              />
+            {/* Timer / Status */}
+            <div className="lcd-display px-4 py-1.5 min-w-[120px] text-center">
+              <AnimatePresence mode="wait">
+                {isRecording ? (
+                  <motion.div
+                    key="timer"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    <div className="led-dot led-dot-red animate-led-pulse" />
+                    <span className="text-sm led-red font-[tabular-nums]">
+                      {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, "0")}
+                    </span>
+                  </motion.div>
+                ) : (
+                  <motion.span
+                    key="ready"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-[10px] text-[#505058] uppercase tracking-wider"
+                  >
+                    Ready
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </div>
-            <span className="text-[11px] led-green animate-led-pulse">
-              GENERATING ARRANGEMENT...
-            </span>
-          </div>
 
-          <p className="text-[10px] text-[#505058]">
-            Creating a full arrangement. This may take up to 60 seconds.
-          </p>
-        </div>
-      )}
+            <AnimatePresence>
+              {!isRecording && (
+                <motion.p
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  className="text-[10px] text-[#505058] tracking-wider uppercase"
+                >
+                  Tap to arm recording
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+      </AnimatePresence>
     </div>
   );
 }

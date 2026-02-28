@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import { motion } from "motion/react";
 import { Trash2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Track } from "@/types/music";
@@ -76,12 +77,13 @@ export default function TrackItem({ track }: TrackItemProps) {
       {/* Channel Info */}
       <div className="w-[140px] shrink-0 flex items-center gap-2">
         {/* Color indicator bar */}
-        <div
+        <motion.div
           className="w-1 h-8 rounded-full shrink-0"
           style={{
             backgroundColor: color,
             boxShadow: `0 0 6px ${color}40`,
           }}
+          animate={track.muted ? { opacity: 0.3 } : { opacity: 1 }}
         />
 
         <div className="min-w-0 flex-1">
@@ -103,13 +105,15 @@ export default function TrackItem({ track }: TrackItemProps) {
           <div className="flex items-center justify-center h-10 gap-2">
             <div className="flex gap-[2px]">
               {[14, 22, 10, 20, 16, 24, 12, 18].map((h, i) => (
-                <div
+                <motion.div
                   key={i}
-                  className="w-1 bg-[#00D4FF] rounded-full animate-signal"
-                  style={{
-                    height: `${h}px`,
-                    animationDelay: `${i * 0.12}s`,
-                    opacity: 0.4,
+                  className="w-1 bg-[#00D4FF] rounded-full"
+                  animate={{ height: [4, h, 4], opacity: [0.2, 0.4, 0.2] }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: i * 0.12,
                   }}
                 />
               ))}
@@ -126,7 +130,8 @@ export default function TrackItem({ track }: TrackItemProps) {
       {/* Controls */}
       <div className="w-[260px] shrink-0 flex items-center gap-2">
         {/* Mute Button */}
-        <button
+        <motion.button
+          whileTap={{ scale: 0.88 }}
           onClick={() => {
             const newMuted = !track.muted;
             updateTrack(track.id, { muted: newMuted });
@@ -144,10 +149,11 @@ export default function TrackItem({ track }: TrackItemProps) {
           }`}
         >
           M
-        </button>
+        </motion.button>
 
         {/* Solo Button */}
-        <button
+        <motion.button
+          whileTap={{ scale: 0.88 }}
           onClick={() => {
             const newSolo = !track.solo;
             updateTrack(track.id, { solo: newSolo });
@@ -165,7 +171,7 @@ export default function TrackItem({ track }: TrackItemProps) {
           }`}
         >
           S
-        </button>
+        </motion.button>
 
         {/* Volume Fader */}
         <div className="flex-1 flex items-center gap-2 channel-fader">
@@ -189,14 +195,14 @@ export default function TrackItem({ track }: TrackItemProps) {
         </div>
 
         {/* Delete */}
-        {track.type !== "hum" && (
-          <button
-            onClick={() => removeTrack(track.id)}
-            className="w-6 h-6 flex items-center justify-center rounded bg-[#232328] border border-[#2A2A2E] text-[#505058] hover:text-[#FF3B30] hover:border-[#FF3B30]/30 transition-colors"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        )}
+        <motion.button
+          whileTap={{ scale: 0.88 }}
+          whileHover={{ borderColor: "rgba(255, 59, 48, 0.3)" }}
+          onClick={() => removeTrack(track.id)}
+          className="w-6 h-6 flex items-center justify-center rounded bg-[#232328] border border-[#2A2A2E] text-[#505058] hover:text-[#FF3B30] transition-colors"
+        >
+          <Trash2 className="w-3 h-3" />
+        </motion.button>
       </div>
     </div>
   );
