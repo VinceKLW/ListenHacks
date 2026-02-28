@@ -156,7 +156,16 @@ export default function HumRecorder() {
 
       // Generate individual layers via MIDI (match hum length)
       setStep("generating");
-      const defaultLayers = getDefaultLayers(analysis.genre);
+      let defaultLayers = getDefaultLayers(analysis.genre);
+      // Always prepend "lead" when we have a good melody transcription — this
+      // plays the user's exact hum back as a synth melody and anchors all other layers.
+      if (
+        analysis.melody &&
+        analysis.melody.length >= 4 &&
+        !defaultLayers.includes("lead" as InstrumentType)
+      ) {
+        defaultLayers = ["lead" as InstrumentType, ...defaultLayers];
+      }
       setGeneratingLayers(defaultLayers);
 
       // Create placeholder tracks for all layers
