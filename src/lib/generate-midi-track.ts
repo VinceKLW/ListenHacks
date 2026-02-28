@@ -78,8 +78,13 @@ export async function generateMidiTrack(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `MIDI generation failed: ${res.status}`);
+    const err = await res
+      .json()
+      .catch(() => ({ error: "Unknown error", details: "" }));
+    const detail = err.details ? ` (${err.details})` : "";
+    throw new Error(
+      err.error ? `${err.error}${detail}` : `MIDI generation failed: ${res.status}`
+    );
   }
 
   const midiData: MidiTrackData = await res.json();

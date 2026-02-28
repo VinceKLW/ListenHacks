@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { RotateCcw, Mic } from "lucide-react";
+import { RotateCcw, Mic, FileText } from "lucide-react";
 import HumRecorder from "@/components/HumRecorder";
 import TrackList from "@/components/TrackList";
 import MasterTrack from "@/components/MasterTrack";
@@ -11,11 +11,13 @@ import VoiceCommandBar from "@/components/VoiceCommandBar";
 import TextCommandBar from "@/components/TextCommandBar";
 import TransportBar from "@/components/TransportBar";
 import HumAddModal from "@/components/HumAddModal";
+import LyricsModal from "@/components/LyricsModal";
 import { useTracksStore } from "@/store/tracks";
 
 export default function Home() {
   const { step } = useTracksStore();
   const [isHumModalOpen, setIsHumModalOpen] = useState(false);
+  const [isLyricsModalOpen, setIsLyricsModalOpen] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-[#0D0D0F] overflow-hidden">
@@ -154,6 +156,15 @@ export default function Home() {
                     <TextCommandBar />
                   </div>
                   <motion.button
+                    onClick={() => setIsLyricsModalOpen(true)}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Add lyrics"
+                    className="w-10 h-10 rounded flex items-center justify-center bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] hover:border-[#F97316]/30 transition-all shrink-0"
+                  >
+                    <FileText className="w-4 h-4 text-[#F97316]" />
+                  </motion.button>
+                  <motion.button
                     onClick={() => setIsHumModalOpen(true)}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.9 }}
@@ -172,6 +183,9 @@ export default function Home() {
 
       {isHumModalOpen && (
         <HumAddModal isOpen onClose={() => setIsHumModalOpen(false)} />
+      )}
+      {isLyricsModalOpen && (
+        <LyricsModal isOpen onClose={() => setIsLyricsModalOpen(false)} />
       )}
     </div>
   );

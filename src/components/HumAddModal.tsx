@@ -187,7 +187,8 @@ export default function HumAddModal({ isOpen, onClose }: HumAddModalProps) {
 
       if (!analyzeRes.ok) throw new Error("Analysis failed");
       const analysis = await analyzeRes.json();
-      analysis.durationSeconds = humBuffer.duration;
+      const targetDurationSeconds = Math.max(humBuffer.duration, 32);
+      analysis.durationSeconds = targetDurationSeconds;
       setAnalysis(analysis);
 
       setPhase("generating");
@@ -220,7 +221,7 @@ export default function HumAddModal({ isOpen, onClose }: HumAddModalProps) {
             const { audioBuffer } = await generateMidiTrack(
               analysis,
               instrument as InstrumentType,
-              analysis.durationSeconds ?? 16
+              analysis.durationSeconds ?? 32
             );
             updateTrack(id, { audioBuffer, isLoading: false });
             setGenerationProgress((prev) => ({ ...prev, [instrument]: "done" }));
