@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { motion } from "motion/react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Mic } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Track } from "@/types/music";
 import { useTracksStore } from "@/store/tracks";
@@ -11,6 +11,7 @@ import WaveSurfer from "wavesurfer.js";
 
 interface TrackItemProps {
   track: Track;
+  onOpenHumModal?: () => void;
 }
 
 const typeLabels: Record<string, string> = {
@@ -29,7 +30,7 @@ const typeColors: Record<string, string> = {
   midi: "#06b6d4",
 };
 
-export default function TrackItem({ track }: TrackItemProps) {
+export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const { tracks, isPlaying, updateTrack, removeTrack, selectedTrackId, setSelectedTrackId } = useTracksStore();
@@ -109,6 +110,18 @@ export default function TrackItem({ track }: TrackItemProps) {
             {typeLabels[track.type]}
           </span>
         </div>
+
+        {track.type === "hum" && onOpenHumModal && (
+          <motion.button
+            whileTap={{ scale: 0.88 }}
+            whileHover={{ scale: 1.1 }}
+            onClick={onOpenHumModal}
+            title="Regenerate hum"
+            className="w-5 h-5 flex items-center justify-center rounded bg-[#232328] border border-[#2A2A2E] text-[#A855F7]/60 hover:text-[#A855F7] hover:border-[#A855F7]/30 transition-colors shrink-0"
+          >
+            <Mic className="w-3 h-3" />
+          </motion.button>
+        )}
       </div>
 
       {/* Waveform Display */}

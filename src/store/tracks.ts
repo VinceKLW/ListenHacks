@@ -19,6 +19,7 @@ interface TracksStore {
   removeTrack: (id: string) => void;
   setPlaying: (playing: boolean) => void;
   setSelectedTrackId: (id: string | null) => void;
+  clearTracks: () => void;
   reset: () => void;
 }
 
@@ -53,6 +54,9 @@ export const useTracksStore = create<TracksStore>((set) => ({
 
   setPlaying: (playing) => set({ isPlaying: playing }),
   setSelectedTrackId: (id) => set({ selectedTrackId: id }),
+
+  clearTracks: () =>
+    set({ tracks: [], analysis: null, humAudioBlob: null, isPlaying: false }),
 
   reset: () =>
     set({

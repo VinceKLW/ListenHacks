@@ -109,6 +109,20 @@ export function getMidiInstrumentColor(instrument: string): string {
   );
 }
 
+export function getDefaultLayers(genre: string): InstrumentType[] {
+  const genreLayers: Record<string, InstrumentType[]> = {
+    pop: ["piano", "bass"],
+    electronic: ["lead", "bass", "pad"],
+    jazz: ["piano", "bass"],
+    classical: ["piano", "pad"],
+    hiphop: ["bass", "lead"],
+    rock: ["lead", "bass"],
+    rnb: ["piano", "bass", "pad"],
+    lofi: ["piano", "bass", "pad"],
+  };
+  return genreLayers[genre] || ["piano", "bass"];
+}
+
 export function detectInstrumentFromDescription(desc: string): InstrumentType {
   const lower = desc.toLowerCase();
   if (

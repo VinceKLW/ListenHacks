@@ -8,6 +8,7 @@ import { blobToBase64, blobToAudioBuffer, getAudioContext } from "@/lib/audio-ut
 import {
   generateMidiTrack,
   getMidiInstrumentColor,
+  getDefaultLayers,
 } from "@/lib/generate-midi-track";
 import { InstrumentType } from "@/types/midi";
 import { v4 as uuidv4 } from "uuid";
@@ -38,20 +39,6 @@ function LevelMeter({ level }: { level: number }) {
       })}
     </div>
   );
-}
-
-function getDefaultLayers(genre: string): InstrumentType[] {
-  const genreLayers: Record<string, InstrumentType[]> = {
-    pop: ["piano", "bass"],
-    electronic: ["lead", "bass", "pad"],
-    jazz: ["piano", "bass"],
-    classical: ["piano", "pad"],
-    hiphop: ["bass", "lead"],
-    rock: ["lead", "bass"],
-    rnb: ["piano", "bass", "pad"],
-    lofi: ["piano", "bass", "pad"],
-  };
-  return genreLayers[genre] || ["piano", "bass"];
 }
 
 export default function HumRecorder() {
