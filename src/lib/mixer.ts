@@ -7,6 +7,8 @@ class Mixer {
   private sources: Map<string, AudioBufferSourceNode> = new Map();
   private gains: Map<string, GainNode> = new Map();
   private effectCleanups: Map<string, () => void> = new Map();
+  private _panners: Map<string, StereoPannerNode> = new Map();
+  private _masterGain: GainNode | null = null;
   private onEndCallback: (() => void) | null = null;
   private endTimeout: ReturnType<typeof setTimeout> | null = null;
   private _startContextTime: number = 0;
@@ -46,6 +48,17 @@ class Mixer {
     }
   }
 
+  /** Lazy-initialize master gain node; permanently connected to destination */
+  private getMasterGain(): GainNode {
+    if (!this._masterGain) {
+      const ctx = getAudioContext();
+      this._masterGain = ctx.createGain();
+      this._masterGain.gain.value = 0.8;
+      this._masterGain.connect(ctx.destination);
+    }
+    return this._masterGain;
+  }
+
   play(tracks: Track[], onEnd?: () => void, offset: number = 0) {
     this.stop();
     const ctx = getAudioContext();
@@ -63,9 +76,14 @@ class Mixer {
       if (hasSolo && !track.solo) return;
 
       const source = ctx.createBufferSource();
+      const panner = ctx.createStereoPanner();
       const gain = ctx.createGain();
+
       source.buffer = track.audioBuffer;
+      panner.pan.value = track.pan ?? 0;
       gain.gain.value = track.volume;
+
+      source.connect(panner);
 
       const hasEffects =
         track.effects &&
@@ -73,12 +91,12 @@ class Mixer {
           (e) => e && typeof e === "object" && "enabled" in e && (e as { enabled: boolean }).enabled
         );
       if (hasEffects) {
-        const cleanup = connectWithEffects(source, track, gain, ctx);
+        const cleanup = connectWithEffects(panner, track, gain, ctx);
         this.effectCleanups.set(track.id, cleanup);
       } else {
-        source.connect(gain);
+        panner.connect(gain);
       }
-      gain.connect(ctx.destination);
+      gain.connect(this.getMasterGain());
 
       const trackDuration = track.audioBuffer.duration;
       if (offset < trackDuration) {
@@ -90,6 +108,7 @@ class Mixer {
       }
 
       this.sources.set(track.id, source);
+      this._panners.set(track.id, panner);
       this.gains.set(track.id, gain);
     });
 
@@ -125,6 +144,7 @@ class Mixer {
       }
     });
     this.sources.clear();
+    this._panners.clear();
     this.gains.clear();
   }
 
@@ -154,6 +174,23 @@ class Mixer {
     if (gain) {
       gain.gain.setValueAtTime(vol, ctx.currentTime);
     }
+  }
+
+  setPan(id: string, pan: number) {
+    const panner = this._panners.get(id);
+    if (panner) {
+      panner.pan.setValueAtTime(
+        Math.max(-1, Math.min(1, pan)),
+        getAudioContext().currentTime
+      );
+    }
+  }
+
+  setMasterVolume(vol: number) {
+    this.getMasterGain().gain.setValueAtTime(
+      Math.max(0, Math.min(1.5, vol)),
+      getAudioContext().currentTime
+    );
   }
 
   /** Update gain nodes to reflect current mute/solo state */
@@ -198,24 +235,29 @@ class Mixer {
     );
 
     Tone.setContext(offlineCtx as unknown as AudioContext);
+    const masterGain = offlineCtx.createGain();
+    masterGain.gain.value = this._masterGain?.gain.value ?? 0.8;
+    masterGain.connect(offlineCtx.destination);
 
     activeTracks.forEach((track) => {
       const source = offlineCtx.createBufferSource();
+      const panner = offlineCtx.createStereoPanner();
       const gain = offlineCtx.createGain();
       source.buffer = track.audioBuffer!;
+      panner.pan.value = track.pan ?? 0;
       gain.gain.value = track.volume;
-
+      source.connect(panner);
       const hasEffects =
         track.effects &&
         Object.values(track.effects).some(
           (e) => e && typeof e === "object" && "enabled" in e && (e as { enabled: boolean }).enabled
         );
       if (hasEffects) {
-        connectWithEffects(source, track, gain, offlineCtx);
+        connectWithEffects(panner, track, gain, offlineCtx);
       } else {
-        source.connect(gain);
+        panner.connect(gain);
       }
-      gain.connect(offlineCtx.destination);
+      gain.connect(masterGain);
       source.start(0);
     });
 

@@ -12,6 +12,7 @@ export interface Track {
   color: string;
   isLoading: boolean;
   effects?: TrackEffects;
+  pan?: number; // -1 (full left) to 1 (full right), default 0 (center)
 }
 
 export interface MusicalAnalysisNote {
