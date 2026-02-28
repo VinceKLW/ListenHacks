@@ -1,21 +1,69 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { Mic, Square, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Mic, Square } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, blobToAudioBuffer, getAudioContext } from "@/lib/audio-utils";
 import { v4 as uuidv4 } from "uuid";
 
+function LevelMeter({ level }: { level: number }) {
+  const segments = 16;
+  return (
+    <div className="flex flex-col-reverse gap-[2px] w-3">
+      {Array.from({ length: segments }, (_, i) => {
+        const threshold = i / segments;
+        const active = level > threshold;
+        let color = "#00FF87";
+        if (i >= segments - 2) color = "#FF3B30";
+        else if (i >= segments - 5) color = "#FFB800";
+
+        return (
+          <div
+            key={i}
+            className="h-[3px] rounded-[1px] transition-opacity duration-75"
+            style={{
+              backgroundColor: color,
+              opacity: active ? 1 : 0.1,
+              boxShadow: active ? `0 0 4px ${color}40` : "none",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function HumRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   const { step, setStep, setHumBlob, setAnalysis, addTrack, updateTrack } =
     useTracksStore();
+
+  const updateLevel = useCallback(() => {
+    if (!analyserRef.current) return;
+    const data = new Uint8Array(analyserRef.current.fftSize);
+    analyserRef.current.getByteTimeDomainData(data);
+    let max = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = Math.abs(data[i] - 128) / 128;
+      if (v > max) max = v;
+    }
+    setAudioLevel(max);
+    animFrameRef.current = requestAnimationFrame(updateLevel);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -26,12 +74,23 @@ export default function HumRecorder() {
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
+      // Set up analyser for level meter
+      const audioCtx = getAudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      updateLevel();
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+        setAudioLevel(0);
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         setHumBlob(blob);
         await processHum(blob);
@@ -48,7 +107,7 @@ export default function HumRecorder() {
       console.error("Mic access denied:", err);
       alert("Please allow microphone access to use Hum Producer.");
     }
-  }, [setHumBlob]);
+  }, [setHumBlob, updateLevel]);
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -59,7 +118,6 @@ export default function HumRecorder() {
   const processHum = async (blob: Blob) => {
     setStep("analyzing");
 
-    // Add hum track immediately
     const humTrackId = uuidv4();
     const humBuffer = await blobToAudioBuffer(blob);
     addTrack({
@@ -71,11 +129,10 @@ export default function HumRecorder() {
       volume: 0.8,
       muted: false,
       solo: false,
-      color: "#7c3aed",
+      color: "#A855F7",
       isLoading: false,
     });
 
-    // Analyze with Gemini
     try {
       const audioBase64 = await blobToBase64(blob);
       const analyzeRes = await fetch("/api/analyze-hum", {
@@ -84,11 +141,14 @@ export default function HumRecorder() {
         body: JSON.stringify({ audioBase64, mimeType: "audio/webm" }),
       });
 
-      if (!analyzeRes.ok) throw new Error("Analysis failed");
+      if (!analyzeRes.ok) {
+        const errBody = await analyzeRes.json().catch(() => ({}));
+        console.error("Analyze API error:", errBody);
+        throw new Error(errBody.detail || "Analysis failed");
+      }
       const analysis = await analyzeRes.json();
       setAnalysis(analysis);
 
-      // Generate arrangement
       setStep("generating");
       const arrangementTrackId = uuidv4();
       addTrack({
@@ -100,7 +160,7 @@ export default function HumRecorder() {
         volume: 0.7,
         muted: false,
         solo: false,
-        color: "#2563eb",
+        color: "#00D4FF",
         isLoading: true,
       });
 
@@ -113,7 +173,6 @@ export default function HumRecorder() {
       if (!genRes.ok) throw new Error("Generation failed");
       const { trackUrl } = await genRes.json();
 
-      // Fetch audio through proxy to avoid CORS
       const proxiedUrl = `/api/proxy-audio?url=${encodeURIComponent(trackUrl)}`;
       const audioRes = await fetch(proxiedUrl);
       const arrayBuffer = await audioRes.arrayBuffer();
@@ -138,69 +197,151 @@ export default function HumRecorder() {
   }
 
   return (
-    <div className="flex flex-col items-center gap-6 py-12">
+    <div className="flex flex-col items-center gap-6">
       {step === "record" && (
-        <>
-          <h2 className="text-2xl font-bold text-white">Hum Your Melody</h2>
-          <p className="text-gray-400 text-center max-w-md">
-            Press record and hum a melody for 5-15 seconds.
-            <br />
-            We&apos;ll turn it into a full produced track.
-          </p>
+        <div className="daw-panel rounded-lg p-8 flex flex-col items-center gap-6 relative noise-overlay">
+          {/* Rack screws */}
+          <div className="absolute top-3 left-3 rack-screw" />
+          <div className="absolute top-3 right-3 rack-screw" />
+          <div className="absolute bottom-3 left-3 rack-screw" />
+          <div className="absolute bottom-3 right-3 rack-screw" />
 
-          <div className="relative">
-            <Button
-              size="lg"
-              variant={isRecording ? "destructive" : "default"}
-              className={`rounded-full w-24 h-24 ${
-                isRecording
-                  ? "bg-red-600 hover:bg-red-700 animate-pulse"
-                  : "bg-violet-600 hover:bg-violet-700"
-              }`}
-              onClick={isRecording ? stopRecording : startRecording}
-            >
-              {isRecording ? (
-                <Square className="w-8 h-8" />
-              ) : (
-                <Mic className="w-8 h-8" />
-              )}
-            </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
+              Input Channel
+            </span>
           </div>
 
-          {isRecording && (
-            <div className="text-red-400 font-mono text-lg">
-              {Math.floor(recordingTime / 60)}:
-              {String(recordingTime % 60).padStart(2, "0")}
+          <div className="lcd-display px-6 py-3 text-center">
+            <p className="text-[11px] text-[#808088] uppercase tracking-wider mb-1">
+              Hum your melody
+            </p>
+            <p className="text-[10px] text-[#505058]">
+              Record 5-15 seconds. AI will analyze and produce a full track.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* Left meter */}
+            <div className="h-20">
+              <LevelMeter level={audioLevel} />
             </div>
-          )}
+
+            {/* Record Button */}
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+                isRecording
+                  ? "bg-[#FF3B30] shadow-[0_0_20px_rgba(255,59,48,0.4)] recording-pulse"
+                  : "bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+              }`}
+            >
+              {isRecording ? (
+                <Square className="w-6 h-6 text-white" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-[#FF3B30] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+                  <Mic className="w-5 h-5 text-white" />
+                </div>
+              )}
+            </button>
+
+            {/* Right meter */}
+            <div className="h-20">
+              <LevelMeter level={audioLevel * 0.85} />
+            </div>
+          </div>
+
+          {/* Timer / Status */}
+          <div className="lcd-display px-4 py-1.5 min-w-[120px] text-center">
+            {isRecording ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="led-dot led-dot-red animate-led-pulse" />
+                <span className="text-sm led-red font-[tabular-nums]">
+                  {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, "0")}
+                </span>
+              </div>
+            ) : (
+              <span className="text-[10px] text-[#505058] uppercase tracking-wider">
+                Ready
+              </span>
+            )}
+          </div>
 
           {!isRecording && (
-            <p className="text-gray-500 text-sm">Tap to start recording</p>
+            <p className="text-[10px] text-[#505058] tracking-wider uppercase">
+              Tap to arm recording
+            </p>
           )}
-        </>
+        </div>
       )}
 
       {step === "analyzing" && (
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-violet-500 animate-spin" />
-          <h2 className="text-xl font-semibold text-white">
-            Analyzing your melody...
-          </h2>
-          <p className="text-gray-400">
-            Detecting key, tempo, and mood with AI
+        <div className="daw-panel rounded-lg p-8 flex flex-col items-center gap-5 relative noise-overlay">
+          <div className="absolute top-3 left-3 rack-screw" />
+          <div className="absolute top-3 right-3 rack-screw" />
+          <div className="absolute bottom-3 left-3 rack-screw" />
+          <div className="absolute bottom-3 right-3 rack-screw" />
+
+          <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
+            Signal Analysis
+          </span>
+
+          {/* Animated analysis display */}
+          <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
+            <div className="flex gap-1">
+              {[18, 28, 14, 32, 22, 36, 16, 30, 20, 34, 12, 26, 24, 35, 15, 29, 21, 33, 17, 31, 19, 27, 23, 25].map((h, i) => (
+                <div
+                  key={i}
+                  className="w-1 rounded-full bg-[#00D4FF] animate-signal"
+                  style={{
+                    height: `${h}px`,
+                    animationDelay: `${i * 0.08}s`,
+                    opacity: 0.4 + (i % 3) * 0.2,
+                  }}
+                />
+              ))}
+            </div>
+            <span className="text-[11px] led-cyan animate-led-pulse">
+              ANALYZING SIGNAL...
+            </span>
+          </div>
+
+          <p className="text-[10px] text-[#505058]">
+            Detecting key, tempo, mood, and genre
           </p>
         </div>
       )}
 
       {step === "generating" && (
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-          <h2 className="text-xl font-semibold text-white">
-            Generating arrangement...
-          </h2>
-          <p className="text-gray-400">
-            Creating a full track based on your hum. This may take up to 60
-            seconds.
+        <div className="daw-panel rounded-lg p-8 flex flex-col items-center gap-5 relative noise-overlay">
+          <div className="absolute top-3 left-3 rack-screw" />
+          <div className="absolute top-3 right-3 rack-screw" />
+          <div className="absolute bottom-3 left-3 rack-screw" />
+          <div className="absolute bottom-3 right-3 rack-screw" />
+
+          <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
+            Track Generator
+          </span>
+
+          <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
+            {/* Progress bar style */}
+            <div className="w-48 h-2 bg-[#0D0D0F] rounded overflow-hidden">
+              <div
+                className="h-full rounded"
+                style={{
+                  background: "linear-gradient(90deg, #00FF87, #00D4FF)",
+                  animation: "waveform-scan 2s ease-in-out infinite alternate",
+                  width: "60%",
+                }}
+              />
+            </div>
+            <span className="text-[11px] led-green animate-led-pulse">
+              GENERATING ARRANGEMENT...
+            </span>
+          </div>
+
+          <p className="text-[10px] text-[#505058]">
+            Creating a full arrangement. This may take up to 60 seconds.
           </p>
         </div>
       )}

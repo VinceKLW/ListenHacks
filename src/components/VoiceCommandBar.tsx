@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Mic, Loader2, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Mic, Loader2 } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, base64ToAudioBuffer } from "@/lib/audio-utils";
 import { VoiceCommand } from "@/types/music";
@@ -40,7 +39,7 @@ export default function VoiceCommandBar() {
 
       mediaRecorder.start(100);
       setIsRecording(true);
-      setStatusText("Listening... say what to add");
+      setStatusText("Listening...");
     } catch (err) {
       console.error("Mic access error:", err);
     }
@@ -53,7 +52,7 @@ export default function VoiceCommandBar() {
 
   const processCommand = async (blob: Blob) => {
     setIsProcessing(true);
-    setStatusText("Understanding your command...");
+    setStatusText("Processing...");
 
     try {
       const audioBase64 = await blobToBase64(blob);
@@ -66,7 +65,7 @@ export default function VoiceCommandBar() {
       if (!cmdRes.ok) throw new Error("Command parse failed");
       const command: VoiceCommand = await cmdRes.json();
 
-      setStatusText(`Got it: "${command.description}"`);
+      setStatusText(command.description);
 
       if (
         command.action === "add_beat" ||
@@ -76,8 +75,8 @@ export default function VoiceCommandBar() {
         const trackType =
           command.action === "add_beat" ? "beat" : "instrument";
         const colors = {
-          beat: "#ea580c",
-          instrument: "#059669",
+          beat: "#FFB800",
+          instrument: "#00FF87",
         };
 
         addTrack({
@@ -93,7 +92,7 @@ export default function VoiceCommandBar() {
           isLoading: true,
         });
 
-        setStatusText(`Generating: ${command.description}...`);
+        setStatusText(`Generating: ${command.description}`);
 
         const beatRes = await fetch("/api/generate-beat", {
           method: "POST",
@@ -115,13 +114,13 @@ export default function VoiceCommandBar() {
 
         setStatusText(`Added: ${command.description}`);
       } else if (command.action === "change_mood" && analysis) {
-        setStatusText(`Mood noted: ${command.description}`);
+        setStatusText(`Mood: ${command.description}`);
       } else if (command.action === "export") {
-        setStatusText("Use the Export button to download your mix.");
+        setStatusText("Use export in transport bar");
       }
     } catch (err) {
       console.error("Voice command error:", err);
-      setStatusText("Failed to process command. Try again.");
+      setStatusText("Command failed");
     }
 
     setIsProcessing(false);
@@ -129,45 +128,31 @@ export default function VoiceCommandBar() {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto mt-6">
-      <div className="flex flex-col items-center gap-3 p-6 rounded-xl bg-gray-900 border border-gray-800">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-violet-400" />
-          <h3 className="text-sm font-semibold text-gray-300">
-            Add layers with your voice
-          </h3>
-        </div>
-
-        <p className="text-xs text-gray-500 text-center">
-          Say things like &quot;add trap drums&quot;, &quot;add a bass
-          line&quot;, or &quot;add piano chords&quot;
-        </p>
-
-        <Button
-          size="lg"
-          disabled={isProcessing}
-          className={`rounded-full w-16 h-16 ${
-            isRecording
-              ? "bg-red-600 hover:bg-red-700 animate-pulse"
-              : isProcessing
-                ? "bg-gray-700"
-                : "bg-violet-600 hover:bg-violet-700"
-          }`}
-          onClick={isRecording ? stopRecording : startRecording}
-        >
-          {isProcessing ? (
-            <Loader2 className="w-6 h-6 animate-spin" />
-          ) : (
-            <Mic className="w-6 h-6" />
-          )}
-        </Button>
-
-        {statusText && (
-          <p className="text-sm text-gray-400">
-            {statusText}
-          </p>
+    <div className="flex items-center gap-2">
+      {/* Voice Command Button */}
+      <button
+        disabled={isProcessing}
+        onClick={isRecording ? stopRecording : startRecording}
+        className={`w-10 h-10 rounded flex items-center justify-center transition-all ${
+          isRecording
+            ? "bg-[#FF3B30]/20 border border-[#FF3B30]/40 recording-pulse"
+            : isProcessing
+              ? "bg-[#232328] border border-[#2A2A2E] opacity-50"
+              : "bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] hover:border-[#A855F7]/30"
+        }`}
+      >
+        {isProcessing ? (
+          <Loader2 className="w-4 h-4 text-[#808088] animate-spin" />
+        ) : (
+          <Mic className={`w-4 h-4 ${isRecording ? "text-[#FF3B30]" : "text-[#A855F7]"}`} />
         )}
-      </div>
+      </button>
+
+      {statusText && (
+        <div className="lcd-display px-2 py-1">
+          <span className="text-[9px] led-cyan">{statusText}</span>
+        </div>
+      )}
     </div>
   );
 }

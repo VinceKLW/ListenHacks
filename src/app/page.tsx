@@ -1,31 +1,79 @@
+"use client";
+
 import HumRecorder from "@/components/HumRecorder";
 import TrackList from "@/components/TrackList";
+import MasterTrack from "@/components/MasterTrack";
 import VoiceCommandBar from "@/components/VoiceCommandBar";
 import TextCommandBar from "@/components/TextCommandBar";
+import TransportBar from "@/components/TransportBar";
+import { useTracksStore } from "@/store/tracks";
 
 export default function Home() {
+  const { step } = useTracksStore();
+
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      <header className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🎵</span>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-              HUM PRODUCER
+    <div className="h-screen flex flex-col bg-[#0D0D0F] overflow-hidden">
+      {/* Top Bar - Header & Transport */}
+      <header className="shrink-0 border-b border-[#2A2A2E] bg-[#1A1A1E]">
+        <div className="flex items-center justify-between px-4 h-12">
+          {/* Left: Logo */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[#00FF87] shadow-[0_0_6px_#00FF87]" />
+              <div className="w-2 h-2 rounded-full bg-[#00D4FF] shadow-[0_0_6px_#00D4FF]" />
+              <div className="w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_6px_#A855F7]" />
+            </div>
+            <h1 className="font-[family-name:var(--font-display)] text-sm font-bold tracking-[0.12em] uppercase text-[#E0E0E4]">
+              Hum Producer
             </h1>
           </div>
-          <span className="text-xs text-gray-600 font-mono">
-            ListenHacks 2025
-          </span>
+
+          {/* Center: Transport (only in studio) */}
+          {step === "studio" && <TransportBar />}
+
+          {/* Right: Info */}
+          <div className="flex items-center gap-4">
+            <div className="lcd-display px-2.5 py-1 flex items-center gap-2">
+              <span className="text-[10px] text-[#505058] uppercase tracking-wider">Status</span>
+              <span className={`text-[10px] font-medium ${
+                step === "studio" ? "led-green" : step === "record" ? "text-[#808088]" : "led-amber"
+              }`}>
+                {step === "record" ? "READY" : step === "analyzing" ? "ANALYZING" : step === "generating" ? "GENERATING" : "ONLINE"}
+              </span>
+            </div>
+            <span className="text-[9px] text-[#505058] tracking-wider uppercase">
+              ListenHacks 2025
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className="px-6 py-8">
-        <HumRecorder />
-        <TrackList />
-        <VoiceCommandBar />
-        <TextCommandBar />
-      </div>
-    </main>
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto">
+        {step !== "studio" ? (
+          <div className="h-full flex items-center justify-center">
+            <HumRecorder />
+          </div>
+        ) : (
+          <div className="h-full flex flex-col">
+            {/* Master + Mixer Area */}
+            <div className="flex-1 overflow-auto px-3 py-3">
+              <MasterTrack />
+              <TrackList />
+            </div>
+
+            {/* Bottom: Command Input */}
+            <div className="shrink-0 border-t border-[#2A2A2E] bg-[#1A1A1E] px-3 py-3">
+              <div className="max-w-5xl mx-auto flex gap-3">
+                <div className="flex-1">
+                  <TextCommandBar />
+                </div>
+                <VoiceCommandBar />
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

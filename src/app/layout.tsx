@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { JetBrains_Mono, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const barlowCondensed = Barlow_Condensed({
+  variable: "--font-display",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Hum Producer - AI Music Production",
+  title: "HUM PRODUCER - AI Music Production",
   description:
     "Hum a melody, get a full produced track. AI-powered music production.",
 };
@@ -26,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-gray-950 antialiased`}
+        className={`${jetbrainsMono.variable} ${barlowCondensed.variable} font-[family-name:var(--font-mono)] bg-[#0D0D0F] text-[#E0E0E4] antialiased`}
       >
         {children}
       </body>

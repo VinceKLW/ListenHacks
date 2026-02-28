@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const { audioBase64, mimeType } = await req.json();
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
     const result = await model.generateContent([
       {
@@ -37,10 +37,11 @@ Return ONLY valid JSON with no markdown formatting, no code fences, no extra tex
     const analysis = JSON.parse(cleaned);
 
     return NextResponse.json(analysis);
-  } catch (error) {
-    console.error("Analyze hum error:", error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Analyze hum error:", message, error);
     return NextResponse.json(
-      { error: "Failed to analyze hum" },
+      { error: "Failed to analyze hum", detail: message },
       { status: 500 }
     );
   }
