@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { RotateCcw, Mic } from "lucide-react";
+import { Mic } from "lucide-react";
 import HumRecorder from "@/components/HumRecorder";
 import TrackList from "@/components/TrackList";
 import MasterTrack from "@/components/MasterTrack";
 import EffectsSidebar from "@/components/EffectsSidebar";
 import VoiceCommandBar from "@/components/VoiceCommandBar";
-import TextCommandBar from "@/components/TextCommandBar";
+import AgentBar from "@/components/AgentBar";
 import TransportBar from "@/components/TransportBar";
 import HumAddModal from "@/components/HumAddModal";
 import { useTracksStore } from "@/store/tracks";
@@ -112,7 +112,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-hidden">
         <AnimatePresence mode="wait">
           {step !== "studio" ? (
             <motion.div
@@ -128,13 +128,13 @@ export default function Home() {
           ) : (
             <motion.div
               key="studio"
-              className="h-full flex flex-col"
+              className="h-full flex flex-row"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.1 }}
             >
               {/* Master + Mixer Area + Effects Sidebar */}
-              <div className="flex-1 flex overflow-hidden">
+              <div className="flex-1 flex overflow-hidden min-w-0">
                 <div className="flex-1 overflow-auto px-3 py-3">
                   <MasterTrack />
                   <TrackList onOpenHumModal={() => setIsHumModalOpen(true)} />
@@ -142,27 +142,19 @@ export default function Home() {
                 <EffectsSidebar />
               </div>
 
-              {/* Bottom: Command Input */}
+              {/* Right: AI Agent panel */}
               <motion.div
-                className="shrink-0 border-t border-[#2A2A2E] bg-[#1A1A1E] px-3 py-3"
-                initial={{ y: 40, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.3 }}
+                className="w-64 shrink-0 border-l border-[#2A2A2E] bg-[#111114] flex flex-col"
+                initial={{ x: 40, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.2 }}
               >
-                <div className="max-w-5xl mx-auto flex gap-3">
-                  <div className="flex-1">
-                    <TextCommandBar />
-                  </div>
-                  <motion.button
-                    onClick={() => setIsHumModalOpen(true)}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.9 }}
-                    title="Regenerate hum"
-                    className="w-10 h-10 rounded flex items-center justify-center bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] hover:border-[#A855F7]/30 transition-all shrink-0"
-                  >
-                    <RotateCcw className="w-4 h-4 text-[#A855F7]" />
-                  </motion.button>
+                {/* Voice mic row */}
+                <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[#2A2A2E]">
                   <VoiceCommandBar />
+                </div>
+                <div className="flex-1 min-h-0">
+                  <AgentBar />
                 </div>
               </motion.div>
             </motion.div>

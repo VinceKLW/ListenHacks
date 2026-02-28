@@ -349,6 +349,17 @@ export default function HumRecorder() {
                 </motion.p>
               )}
             </AnimatePresence>
+
+            {/* TODO: remove this button before demo/production */}
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              onClick={() => setStep("studio")}
+              className="text-[9px] text-[#3A3A42] hover:text-[#505058] underline underline-offset-2 transition-colors"
+            >
+              skip (remove later)
+            </motion.button>
           </motion.div>
         )}
 
