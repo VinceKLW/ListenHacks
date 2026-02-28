@@ -85,7 +85,11 @@ export default function TextCommandBar() {
       });
 
       try {
-        const { audioBuffer } = await generateMidiTrack(analysis, instrument, 16);
+        const { audioBuffer } = await generateMidiTrack(
+          analysis,
+          instrument,
+          analysis.durationSeconds ?? 16
+        );
         updateTrack(newTrackId, { audioBuffer, isLoading: false });
       } catch (err) {
         console.error("MIDI generation error:", err);

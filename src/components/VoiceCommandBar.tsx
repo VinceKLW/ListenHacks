@@ -129,7 +129,11 @@ export default function VoiceCommandBar() {
         setStatusText(`Generating ${instrument}: ${command.description}...`);
 
         if (analysis) {
-          const { audioBuffer } = await generateMidiTrack(analysis, instrument, 16);
+          const { audioBuffer } = await generateMidiTrack(
+            analysis,
+            instrument,
+            analysis.durationSeconds ?? 16
+          );
           updateTrack(newTrackId, { audioBuffer, isLoading: false });
           setStatusText(`Added: ${command.description}`);
         } else {
