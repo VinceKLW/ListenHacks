@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useTracksStore } from "@/store/tracks";
 import TrackItem from "./TrackItem";
 
-export default function TrackList() {
+export default function TrackList({ onOpenHumModal }: { onOpenHumModal: () => void }) {
   const { tracks, step } = useTracksStore();
 
   if (step !== "studio") return null;
@@ -71,7 +71,7 @@ export default function TrackList() {
                 }}
                 layout
               >
-                <TrackItem track={track} />
+                <TrackItem track={track} onOpenHumModal={onOpenHumModal} />
               </motion.div>
             ))}
           </AnimatePresence>

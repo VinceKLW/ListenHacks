@@ -1,16 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { RotateCcw, Mic } from "lucide-react";
 import HumRecorder from "@/components/HumRecorder";
 import TrackList from "@/components/TrackList";
 import MasterTrack from "@/components/MasterTrack";
 import VoiceCommandBar from "@/components/VoiceCommandBar";
 import TextCommandBar from "@/components/TextCommandBar";
 import TransportBar from "@/components/TransportBar";
+import HumAddModal from "@/components/HumAddModal";
 import { useTracksStore } from "@/store/tracks";
 
 export default function Home() {
   const { step } = useTracksStore();
+  const [isHumModalOpen, setIsHumModalOpen] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-[#0D0D0F] overflow-hidden">
@@ -57,6 +61,31 @@ export default function Home() {
 
           {/* Right: Info */}
           <div className="flex items-center gap-4">
+            {/* Rec Hum button — studio only */}
+            <AnimatePresence>
+              {step === "studio" && (
+                <motion.button
+                  initial={{ opacity: 0, x: 8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 8 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  onClick={() => setIsHumModalOpen(true)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.9 }}
+                  title="Regenerate hum"
+                  className="flex items-center gap-1.5 px-2.5 h-7 rounded bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] hover:border-[#A855F7]/40 transition-all"
+                >
+                  <Mic
+                    className="w-3 h-3 text-[#A855F7]"
+                    style={{ filter: "drop-shadow(0 0 4px #A855F780)" }}
+                  />
+                  <span className="text-[9px] uppercase tracking-wider font-semibold text-[#A855F7]">
+                    Rec Hum
+                  </span>
+                </motion.button>
+              )}
+            </AnimatePresence>
+
             <div className="lcd-display px-2.5 py-1 flex items-center gap-2">
               <span className="text-[10px] text-[#505058] uppercase tracking-wider">Status</span>
               <AnimatePresence mode="wait">
@@ -106,7 +135,7 @@ export default function Home() {
               {/* Master + Mixer Area */}
               <div className="flex-1 overflow-auto px-3 py-3">
                 <MasterTrack />
-                <TrackList />
+                <TrackList onOpenHumModal={() => setIsHumModalOpen(true)} />
               </div>
 
               {/* Bottom: Command Input */}
@@ -120,6 +149,15 @@ export default function Home() {
                   <div className="flex-1">
                     <TextCommandBar />
                   </div>
+                  <motion.button
+                    onClick={() => setIsHumModalOpen(true)}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Regenerate hum"
+                    className="w-10 h-10 rounded flex items-center justify-center bg-[#232328] border border-[#2A2A2E] hover:bg-[#2C2C33] hover:border-[#A855F7]/30 transition-all shrink-0"
+                  >
+                    <RotateCcw className="w-4 h-4 text-[#A855F7]" />
+                  </motion.button>
                   <VoiceCommandBar />
                 </div>
               </motion.div>
@@ -127,6 +165,10 @@ export default function Home() {
           )}
         </AnimatePresence>
       </main>
+
+      {isHumModalOpen && (
+        <HumAddModal isOpen onClose={() => setIsHumModalOpen(false)} />
+      )}
     </div>
   );
 }
