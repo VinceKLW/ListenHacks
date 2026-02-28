@@ -13,6 +13,7 @@ export interface Track {
   isLoading: boolean;
   effects?: TrackEffects;
   pan?: number; // -1 (full left) to 1 (full right), default 0 (center)
+  startOffset?: number; // seconds into session where this track begins playback (default 0)
 }
 
 export interface MusicalAnalysisNote {

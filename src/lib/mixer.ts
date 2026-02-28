@@ -98,13 +98,19 @@ class Mixer {
       }
       gain.connect(this.getMasterGain());
 
-      const trackDuration = track.audioBuffer.duration;
-      if (offset < trackDuration) {
-        source.start(startTime, offset);
-      }
+      const trackStart = track.startOffset ?? 0;
+      const bufDuration = track.audioBuffer.duration;
 
-      if (trackDuration > maxDuration) {
-        maxDuration = trackDuration;
+      // Skip tracks entirely before the current playback position
+      if (offset >= trackStart + bufDuration) return;
+
+      const bufOffset = Math.max(0, offset - trackStart);
+      const delay = Math.max(0, trackStart - offset);
+      source.start(startTime + delay, bufOffset);
+
+      const trackEnd = trackStart + bufDuration;
+      if (trackEnd > maxDuration) {
+        maxDuration = trackEnd;
       }
 
       this.sources.set(track.id, source);
@@ -161,8 +167,9 @@ class Mixer {
   getDuration(tracks: Track[]): number {
     let max = 0;
     tracks.forEach((t) => {
-      if (t.audioBuffer && t.audioBuffer.duration > max) {
-        max = t.audioBuffer.duration;
+      if (t.audioBuffer) {
+        const end = (t.startOffset ?? 0) + t.audioBuffer.duration;
+        if (end > max) max = end;
       }
     });
     return max;
@@ -225,7 +232,7 @@ class Mixer {
     }
 
     const maxDuration = Math.max(
-      ...activeTracks.map((t) => t.audioBuffer!.duration)
+      ...activeTracks.map((t) => (t.startOffset ?? 0) + t.audioBuffer!.duration)
     );
     const sampleRate = 44100;
     const offlineCtx = new OfflineAudioContext(
@@ -258,7 +265,7 @@ class Mixer {
         panner.connect(gain);
       }
       gain.connect(masterGain);
-      source.start(0);
+      source.start(track.startOffset ?? 0);
     });
 
     const renderedBuffer = await offlineCtx.startRendering();

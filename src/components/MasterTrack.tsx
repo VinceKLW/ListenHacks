@@ -13,9 +13,10 @@ function formatTime(seconds: number): string {
 }
 
 export default function MasterTrack() {
-  const { tracks, isPlaying, setPlaying, step } = useTracksStore();
+  const { tracks, isPlaying, setPlaying, step, timeSelection, setTimeSelection } = useTracksStore();
   const [position, setPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [liveSelection, setLiveSelection] = useState<{ startPct: number; endPct: number } | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -81,8 +82,12 @@ export default function MasterTrack() {
     activeTracks.forEach((track) => {
       const data = track.audioBuffer!.getChannelData(0);
       const vol = track.volume;
-      for (let i = 0; i < Math.min(data.length, totalSamples); i++) {
-        mixed[i] += data[i] * vol;
+      const trackStartSample = Math.floor((track.startOffset ?? 0) * sampleRate);
+      for (let i = 0; i < data.length; i++) {
+        const globalIdx = trackStartSample + i;
+        if (globalIdx < totalSamples) {
+          mixed[globalIdx] += data[i] * vol;
+        }
       }
     });
 
@@ -137,37 +142,63 @@ export default function MasterTrack() {
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      const wasPlaying = isPlaying;
+      if (!trackRef.current || duration === 0) return;
+      const rect = trackRef.current.getBoundingClientRect();
+      const startX = e.clientX - rect.left;
+      let dragging = false;
       setIsDragging(true);
 
-      // Pause audio immediately while dragging
-      if (wasPlaying) {
-        mixer.stop();
-        setPlaying(false);
-      }
-
-      handleSeek(e.clientX);
-
       const handleMouseMove = (ev: MouseEvent) => {
-        handleSeek(ev.clientX);
+        const curX = ev.clientX - rect.left;
+        if (!dragging && Math.abs(curX - startX) > 4) dragging = true;
+        if (dragging) {
+          setLiveSelection({
+            startPct: Math.max(0, Math.min(1, Math.min(startX, curX) / rect.width)),
+            endPct: Math.max(0, Math.min(1, Math.max(startX, curX) / rect.width)),
+          });
+        }
       };
 
       const handleMouseUp = (ev: MouseEvent) => {
-        handleSeek(ev.clientX);
-        setIsDragging(false);
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
+        setIsDragging(false);
+
+        if (!dragging) {
+          // Short click → seek + clear selection
+          setTimeSelection(null);
+          setLiveSelection(null);
+          if (isPlaying) {
+            mixer.stop();
+            setPlaying(false);
+          }
+          handleSeek(ev.clientX);
+        } else {
+          // Drag → commit selection
+          const curX = ev.clientX - rect.left;
+          const startSec = Math.max(0, Math.min(1, Math.min(startX, curX) / rect.width)) * duration;
+          const endSec = Math.max(0, Math.min(1, Math.max(startX, curX) / rect.width)) * duration;
+          setTimeSelection({ start: startSec, end: endSec, trackId: null });
+          setLiveSelection(null);
+        }
       };
 
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
-    [handleSeek, isPlaying, tracks, setPlaying]
+    [duration, handleSeek, isPlaying, setPlaying, setTimeSelection]
   );
 
   if (step !== "studio" || duration === 0) return null;
 
   const progressPct = duration > 0 ? (position / duration) * 100 : 0;
+
+  // Compute which selection overlay to show (live drag takes priority)
+  const selOverlay = liveSelection
+    ? liveSelection
+    : timeSelection?.trackId === null
+    ? { startPct: timeSelection.start / duration, endPct: timeSelection.end / duration }
+    : null;
 
   return (
     <motion.div
@@ -181,6 +212,20 @@ export default function MasterTrack() {
           <span className="text-[10px] uppercase tracking-[0.12em] text-[#505058] font-[family-name:var(--font-display)] font-semibold">
             Master
           </span>
+          {timeSelection && timeSelection.trackId === null && (
+            <div className="lcd-display px-2 py-0.5 flex items-center gap-1.5">
+              <span className="text-[9px] font-[tabular-nums] text-[#00D4FF]">
+                {formatTime(timeSelection.start)} – {formatTime(timeSelection.end)}
+              </span>
+              <button
+                onClick={() => setTimeSelection(null)}
+                className="text-[#505058] hover:text-[#FF3B30] text-[9px] leading-none transition-colors"
+                title="Clear selection"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <div className="lcd-display px-2 py-0.5">
@@ -240,6 +285,29 @@ export default function MasterTrack() {
             background: "linear-gradient(90deg, rgba(0,255,135,0.05), rgba(0,212,255,0.08))",
           }}
         />
+
+        {/* Time Selection Overlay */}
+        {selOverlay && (
+          <div
+            className="absolute top-0 bottom-0 pointer-events-none z-20"
+            style={{
+              left: `${selOverlay.startPct * 100}%`,
+              width: `${(selOverlay.endPct - selOverlay.startPct) * 100}%`,
+              background: "rgba(0,212,255,0.12)",
+              borderLeft: "1.5px solid rgba(0,212,255,0.7)",
+              borderRight: "1.5px solid rgba(0,212,255,0.7)",
+            }}
+          >
+            {/* Duration label */}
+            {(selOverlay.endPct - selOverlay.startPct) * 100 > 8 && (
+              <div className="absolute top-1 left-1/2 -translate-x-1/2 lcd-display px-1 py-0 whitespace-nowrap">
+                <span className="text-[8px] font-[tabular-nums] text-[#00D4FF]">
+                  {formatTime((selOverlay.endPct - selOverlay.startPct) * duration)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Playhead */}
         <div

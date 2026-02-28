@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { lastAssistantMessageIsCompleteWithToolCalls, DefaultChatTransport } from "ai";
 import { motion, AnimatePresence } from "motion/react";
-import { Send, Loader2, Check, Zap, Sparkles } from "lucide-react";
+import { Send, Loader2, Check, Zap, Sparkles, Timer } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { base64ToAudioBuffer } from "@/lib/audio-utils";
 import {
@@ -15,19 +15,26 @@ import { mixer } from "@/lib/mixer";
 import { InstrumentType } from "@/types/midi";
 import { v4 as uuidv4 } from "uuid";
 
+function formatTime(s: number) {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}.${Math.floor((s % 1) * 10)}`;
+}
+
 export default function AgentBar() {
   const [inputValue, setInputValue] = useState("");
-  const { tracks, analysis, updateTrack, addTrack, removeTrack, step } =
+  const { tracks, analysis, updateTrack, addTrack, removeTrack, step, timeSelection, setTimeSelection } =
     useTracksStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Keep refs so onToolCall always has fresh state
   const tracksRef = useRef(tracks);
   const analysisRef = useRef(analysis);
+  const timeSelectionRef = useRef(timeSelection);
   useEffect(() => {
     tracksRef.current = tracks;
     analysisRef.current = analysis;
-  }, [tracks, analysis]);
+    timeSelectionRef.current = timeSelection;
+  }, [tracks, analysis, timeSelection]);
 
   const { messages, sendMessage, status, addToolOutput } = useChat({
     transport: new DefaultChatTransport({ api: "/api/agent" }),
@@ -72,6 +79,9 @@ export default function AgentBar() {
         }
 
         case "generateBeat": {
+          const sel = timeSelectionRef.current;
+          const durationSeconds = sel ? sel.end - sel.start : 8;
+          const startOffset = sel?.start;
           const newId = uuidv4();
           addTrack({
             id: newId,
@@ -84,13 +94,14 @@ export default function AgentBar() {
             solo: false,
             color: "#ea580c",
             isLoading: true,
+            startOffset,
           });
           void (async () => {
             try {
               const res = await fetch("/api/generate-beat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ description, durationSeconds: 8 }),
+                body: JSON.stringify({ description, durationSeconds }),
               });
               if (!res.ok) throw new Error();
               const { audioBase64 } = await res.json();
@@ -112,6 +123,9 @@ export default function AgentBar() {
             resolve("No song analysis — record a hum first");
             break;
           }
+          const sel = timeSelectionRef.current;
+          const durationSec = sel ? sel.end - sel.start : 16;
+          const startOffset = sel?.start;
           const newId = uuidv4();
           addTrack({
             id: newId,
@@ -124,10 +138,11 @@ export default function AgentBar() {
             solo: false,
             color: getMidiInstrumentColor(instr),
             isLoading: true,
+            startOffset,
           });
           void (async () => {
             try {
-              const { audioBuffer } = await generateMidiTrack(currentAnalysis, instr, 16);
+              const { audioBuffer } = await generateMidiTrack(currentAnalysis, instr, durationSec);
               updateTrack(newId, { audioBuffer, isLoading: false });
               resolve(`${instr} "${description}" added`);
             } catch {
@@ -169,6 +184,7 @@ export default function AgentBar() {
             isLoading: t.isLoading,
           })),
           analysis: analysisRef.current,
+          timeSelection: timeSelectionRef.current,
         },
       }
     );
@@ -306,6 +322,43 @@ export default function AgentBar() {
 
       {/* Input bar — pinned to bottom */}
       <div className="shrink-0 border-t border-[#2A2A2E] p-2">
+        {/* Time selection context chip */}
+        <AnimatePresence>
+          {timeSelection && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+              animate={{ opacity: 1, height: "auto", marginBottom: 6 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded border border-[#00D4FF]/25 bg-[#00D4FF]/[0.06]">
+                <Timer className="w-2.5 h-2.5 text-[#00D4FF] shrink-0" />
+                <span className="text-[8px] uppercase tracking-wider text-[#00D4FF]/70 font-semibold shrink-0">
+                  {timeSelection.trackId
+                    ? (tracks.find((t) => t.id === timeSelection.trackId)?.name ?? "Track")
+                    : "Master"}
+                </span>
+                <span className="text-[8px] text-[#00D4FF]/30 shrink-0">|</span>
+                <span className="text-[9px] font-[tabular-nums] text-[#00D4FF] font-mono shrink-0">
+                  {formatTime(timeSelection.start)} – {formatTime(timeSelection.end)}
+                </span>
+                <span className="text-[8px] text-[#00D4FF]/50 font-[tabular-nums] shrink-0">
+                  ({formatTime(timeSelection.end - timeSelection.start)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTimeSelection(null)}
+                  className="ml-auto text-[#00D4FF]/40 hover:text-[#FF3B30] transition-colors text-[9px] leading-none shrink-0"
+                  title="Clear selection"
+                >
+                  ✕
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <form onSubmit={handleSubmit} className="flex gap-1.5 items-center">
           <div className="flex-1 relative">
             <div className="absolute left-2 top-1/2 -translate-y-1/2">
@@ -315,7 +368,7 @@ export default function AgentBar() {
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="mute bass, add trap drums..."
+              placeholder={timeSelection ? "add beat, add piano to selection..." : "mute bass, add trap drums..."}
               className="w-full h-8 bg-[#0D0D0F] border border-[#2A2A2E] rounded pl-7 pr-2 text-[11px] text-[#E0E0E4] placeholder:text-[#3A3A42] outline-none focus:border-[#A855F7]/40 transition-colors font-mono"
               style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.3)" }}
               disabled={isLoading}

@@ -36,7 +36,7 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const { tracks, isPlaying, updateTrack, removeTrack, selectedTrackId, setSelectedTrackId } =
+  const { tracks, isPlaying, updateTrack, removeTrack, selectedTrackId, setSelectedTrackId, timeSelection, setTimeSelection } =
     useTracksStore();
   const isSelected = selectedTrackId === track.id;
 
@@ -146,12 +146,21 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
           <p className="text-[11px] font-medium text-[#E0E0E4] truncate leading-tight">
             {track.name}
           </p>
-          <span
-            className="text-[9px] uppercase tracking-wider font-semibold"
-            style={{ color: color }}
-          >
-            {typeLabels[track.type]}
-          </span>
+          <div className="flex items-center gap-1">
+            <span
+              className="text-[9px] uppercase tracking-wider font-semibold"
+              style={{ color: color }}
+            >
+              {typeLabels[track.type]}
+            </span>
+            {timeSelection?.trackId === track.id && (
+              <div
+                className="w-1 h-1 rounded-full"
+                style={{ backgroundColor: "#00D4FF", boxShadow: "0 0 4px #00D4FF" }}
+                title="Time selection active"
+              />
+            )}
+          </div>
         </div>
 
         {track.type === "hum" && onOpenHumModal && (
@@ -168,7 +177,7 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
       </div>
 
       {/* Waveform Display */}
-      <div className="flex-1 min-w-0 daw-panel-recessed rounded px-2 py-1">
+      <div className="flex-1 min-w-0 daw-panel-recessed rounded px-2 py-1 relative">
         {track.isLoading ? (
           <div className="flex items-center justify-center h-10 gap-2">
             <div className="flex gap-[2px]">
@@ -191,7 +200,59 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
             </span>
           </div>
         ) : (
-          <div ref={waveformRef} className="w-full" />
+          <>
+            <div ref={waveformRef} className="w-full" />
+
+            {/* Selection overlay */}
+            {timeSelection?.trackId === track.id && track.audioBuffer && (() => {
+              const dur = track.audioBuffer.duration;
+              const startPct = Math.max(0, (timeSelection.start / dur) * 100);
+              const widthPct = Math.min(100 - startPct, ((timeSelection.end - timeSelection.start) / dur) * 100);
+              return (
+                <div
+                  className="absolute top-0 bottom-0 pointer-events-none z-10 rounded"
+                  style={{
+                    left: `${startPct}%`,
+                    width: `${widthPct}%`,
+                    background: "rgba(0,212,255,0.15)",
+                    borderLeft: "1.5px solid rgba(0,212,255,0.8)",
+                    borderRight: "1.5px solid rgba(0,212,255,0.8)",
+                  }}
+                />
+              );
+            })()}
+
+            {/* Drag-to-select hit area */}
+            <div
+              className="absolute inset-0 cursor-crosshair"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                if (!track.audioBuffer) return;
+                const dur = track.audioBuffer.duration;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const startX = e.clientX - rect.left;
+                let didDrag = false;
+
+                const handleMouseMove = (ev: MouseEvent) => {
+                  if (!didDrag && Math.abs(ev.clientX - rect.left - startX) > 4) didDrag = true;
+                };
+
+                const handleMouseUp = (ev: MouseEvent) => {
+                  window.removeEventListener("mousemove", handleMouseMove);
+                  window.removeEventListener("mouseup", handleMouseUp);
+                  if (didDrag) {
+                    const endX = ev.clientX - rect.left;
+                    const startSec = Math.max(0, (Math.min(startX, endX) / rect.width) * dur);
+                    const endSec = Math.min(dur, (Math.max(startX, endX) / rect.width) * dur);
+                    setTimeSelection({ start: startSec, end: endSec, trackId: track.id });
+                  }
+                };
+
+                window.addEventListener("mousemove", handleMouseMove);
+                window.addEventListener("mouseup", handleMouseUp);
+              }}
+            />
+          </>
         )}
       </div>
 

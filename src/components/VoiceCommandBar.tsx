@@ -20,7 +20,7 @@ export default function VoiceCommandBar() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const { step, addTrack, updateTrack, analysis } = useTracksStore();
+  const { step, addTrack, updateTrack, analysis, timeSelection } = useTracksStore();
 
   if (step !== "studio") return null;
 
@@ -75,6 +75,8 @@ export default function VoiceCommandBar() {
 
       if (command.action === "add_beat") {
         // --- Percussion → ElevenLabs ---
+        const beatDuration = timeSelection ? timeSelection.end - timeSelection.start : 8;
+        const beatStartOffset = timeSelection?.start;
         const newTrackId = uuidv4();
         addTrack({
           id: newTrackId,
@@ -87,6 +89,7 @@ export default function VoiceCommandBar() {
           solo: false,
           color: "#ea580c",
           isLoading: true,
+          startOffset: beatStartOffset,
         });
 
         setStatusText(`Generating: ${command.description}`);
@@ -96,7 +99,7 @@ export default function VoiceCommandBar() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             description: command.description,
-            durationSeconds: 8,
+            durationSeconds: beatDuration,
           }),
         });
 
@@ -112,6 +115,11 @@ export default function VoiceCommandBar() {
           ? (command.instrument as Parameters<typeof generateMidiTrack>[1])
           : detectInstrumentFromDescription(command.description);
 
+        const instrDuration = timeSelection
+          ? timeSelection.end - timeSelection.start
+          : analysis?.durationSeconds ?? 16;
+        const instrStartOffset = timeSelection?.start;
+
         const newTrackId = uuidv4();
         addTrack({
           id: newTrackId,
@@ -124,6 +132,7 @@ export default function VoiceCommandBar() {
           solo: false,
           color: getMidiInstrumentColor(instrument),
           isLoading: true,
+          startOffset: instrStartOffset,
         });
 
         setStatusText(`Generating ${instrument}: ${command.description}...`);
@@ -132,7 +141,7 @@ export default function VoiceCommandBar() {
           const { audioBuffer } = await generateMidiTrack(
             analysis,
             instrument,
-            analysis.durationSeconds ?? 16
+            instrDuration
           );
           updateTrack(newTrackId, { audioBuffer, isLoading: false });
           setStatusText(`Added: ${command.description}`);
@@ -143,7 +152,7 @@ export default function VoiceCommandBar() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               description: command.description,
-              durationSeconds: 8,
+              durationSeconds: instrDuration,
             }),
           });
           if (!beatRes.ok) throw new Error("Generation failed");
