@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "motion/react";
-import { Trash2, Mic } from "lucide-react";
+import { Trash2, Mic, Play, Square } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Track } from "@/types/music";
 import { useTracksStore } from "@/store/tracks";
 import { mixer } from "@/lib/mixer";
+import { getAudioContext } from "@/lib/audio-utils";
 import WaveSurfer from "wavesurfer.js";
 
 interface TrackItemProps {
@@ -33,6 +34,8 @@ const typeColors: Record<string, string> = {
 export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const { tracks, isPlaying, updateTrack, removeTrack } = useTracksStore();
 
   useEffect(() => {
@@ -67,8 +70,47 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
     };
   }, [track.audioBuffer, track.color, track.type]);
 
+  // Stop preview on unmount
+  useEffect(() => {
+    return () => {
+      try { previewSourceRef.current?.stop(); } catch { /* already stopped */ }
+    };
+  }, []);
+
+  const handlePreviewToggle = () => {
+    if (isPreviewPlaying) {
+      try { previewSourceRef.current?.stop(); } catch { /* already stopped */ }
+      previewSourceRef.current = null;
+      setIsPreviewPlaying(false);
+      return;
+    }
+    if (!track.audioBuffer) return;
+    const ctx = getAudioContext();
+    const source = ctx.createBufferSource();
+    const panner = ctx.createStereoPanner();
+    const gain = ctx.createGain();
+    source.buffer = track.audioBuffer;
+    panner.pan.value = track.pan ?? 0;
+    gain.gain.value = track.volume;
+    source.connect(panner).connect(gain).connect(ctx.destination);
+    source.start(0);
+    source.onended = () => {
+      previewSourceRef.current = null;
+      setIsPreviewPlaying(false);
+    };
+    previewSourceRef.current = source;
+    setIsPreviewPlaying(true);
+  };
+
   const color = typeColors[track.type] || track.color;
   const dbValue = track.volume > 0 ? (20 * Math.log10(track.volume)).toFixed(1) : "-inf";
+  const panValue = track.pan ?? 0;
+  const panLabel =
+    Math.abs(panValue) < 0.01
+      ? "C"
+      : panValue > 0
+      ? `R${Math.round(panValue * 100)}`
+      : `L${Math.round(Math.abs(panValue) * 100)}`;
 
   return (
     <div
@@ -143,7 +185,26 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
       </div>
 
       {/* Controls */}
-      <div className="w-[260px] shrink-0 flex items-center gap-2">
+      <div className="w-[360px] shrink-0 flex items-center gap-2">
+        {/* Preview Play Button */}
+        <motion.button
+          whileTap={{ scale: 0.88 }}
+          onClick={handlePreviewToggle}
+          disabled={!track.audioBuffer || track.isLoading}
+          title={isPreviewPlaying ? "Stop preview" : "Preview track"}
+          className={`w-7 h-6 rounded flex items-center justify-center transition-all ${
+            isPreviewPlaying
+              ? "bg-[#00FF87]/15 text-[#00FF87] border border-[#00FF87]/30 shadow-[0_0_6px_rgba(0,255,135,0.2)]"
+              : "bg-[#232328] text-[#808088] border border-[#2A2A2E] hover:text-[#00FF87] hover:border-[#00FF87]/20 disabled:opacity-30"
+          }`}
+        >
+          {isPreviewPlaying ? (
+            <Square className="w-2.5 h-2.5 fill-current" />
+          ) : (
+            <Play className="w-2.5 h-2.5 fill-current ml-0.5" />
+          )}
+        </motion.button>
+
         {/* Mute Button */}
         <motion.button
           whileTap={{ scale: 0.88 }}
@@ -187,6 +248,37 @@ export default function TrackItem({ track, onOpenHumModal }: TrackItemProps) {
         >
           S
         </motion.button>
+
+        {/* Pan Control */}
+        <div className="flex flex-col items-center gap-0.5 shrink-0" style={{ width: 56 }}>
+          <div className="flex items-center gap-0.5 w-full">
+            <span className="text-[7px] text-[#505058] uppercase">L</span>
+            <div className="flex-1 channel-fader">
+              <Slider
+                value={[panValue * 50 + 50]}
+                min={0}
+                max={100}
+                step={1}
+                onValueChange={([v]) => {
+                  const p = (v - 50) / 50;
+                  updateTrack(track.id, { pan: p });
+                  mixer.setPan(track.id, p);
+                }}
+              />
+            </div>
+            <span className="text-[7px] text-[#505058] uppercase">R</span>
+          </div>
+          <button
+            onClick={() => {
+              updateTrack(track.id, { pan: 0 });
+              mixer.setPan(track.id, 0);
+            }}
+            title="Center pan"
+            className="text-[7px] text-[#505058] hover:text-[#00FF87] transition-colors leading-none"
+          >
+            {panLabel}
+          </button>
+        </div>
 
         {/* Volume Fader */}
         <div className="flex-1 flex items-center gap-2 channel-fader">

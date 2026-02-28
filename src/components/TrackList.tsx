@@ -49,7 +49,7 @@ export default function TrackList({ onOpenHumModal }: { onOpenHumModal: () => vo
           <div className="flex-1 min-w-0">
             <span className="text-[9px] uppercase tracking-wider text-[#505058]">Waveform</span>
           </div>
-          <div className="w-[260px] shrink-0">
+          <div className="w-[360px] shrink-0">
             <span className="text-[9px] uppercase tracking-wider text-[#505058]">Controls</span>
           </div>
         </div>

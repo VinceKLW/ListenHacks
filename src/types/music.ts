@@ -9,6 +9,7 @@ export interface Track {
   solo: boolean;
   color: string;
   isLoading: boolean;
+  pan?: number; // -1 (full left) to 1 (full right), default 0 (center)
 }
 
 export interface MusicalAnalysisNote {
