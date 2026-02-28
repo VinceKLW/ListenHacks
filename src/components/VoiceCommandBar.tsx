@@ -5,6 +5,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { Mic, Loader2 } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, base64ToAudioBuffer } from "@/lib/audio-utils";
+import {
+  generateMidiTrack,
+  getMidiInstrumentColor,
+  detectInstrumentFromDescription,
+} from "@/lib/generate-midi-track";
 import { VoiceCommand } from "@/types/music";
 import { v4 as uuidv4 } from "uuid";
 
@@ -68,28 +73,19 @@ export default function VoiceCommandBar() {
 
       setStatusText(command.description);
 
-      if (
-        command.action === "add_beat" ||
-        command.action === "add_instrument"
-      ) {
+      if (command.action === "add_beat") {
+        // --- Percussion → ElevenLabs ---
         const newTrackId = uuidv4();
-        const trackType =
-          command.action === "add_beat" ? "beat" : "instrument";
-        const colors = {
-          beat: "#FFB800",
-          instrument: "#00FF87",
-        };
-
         addTrack({
           id: newTrackId,
           name: command.description,
-          type: trackType,
+          type: "beat",
           audioUrl: null,
           audioBuffer: null,
           volume: 0.7,
           muted: false,
           solo: false,
-          color: colors[trackType],
+          color: "#ea580c",
           isLoading: true,
         });
 
@@ -107,15 +103,54 @@ export default function VoiceCommandBar() {
         if (!beatRes.ok) throw new Error("Beat generation failed");
         const { audioBase64: beatBase64 } = await beatRes.json();
         const audioBuffer = await base64ToAudioBuffer(beatBase64, "audio/mpeg");
+        updateTrack(newTrackId, { audioBuffer, isLoading: false });
+        setStatusText(`Added: ${command.description}`);
 
-        updateTrack(newTrackId, {
-          audioBuffer,
-          isLoading: false,
+      } else if (command.action === "add_instrument") {
+        // --- Melodic → MIDI pipeline ---
+        const instrument = command.instrument
+          ? (command.instrument as Parameters<typeof generateMidiTrack>[1])
+          : detectInstrumentFromDescription(command.description);
+
+        const newTrackId = uuidv4();
+        addTrack({
+          id: newTrackId,
+          name: command.description,
+          type: "midi",
+          audioUrl: null,
+          audioBuffer: null,
+          volume: 0.7,
+          muted: false,
+          solo: false,
+          color: getMidiInstrumentColor(instrument),
+          isLoading: true,
         });
 
-        setStatusText(`Added: ${command.description}`);
-      } else if (command.action === "change_mood" && analysis) {
-        setStatusText(`Mood: ${command.description}`);
+        setStatusText(`Generating ${instrument}: ${command.description}...`);
+
+        if (analysis) {
+          const { audioBuffer } = await generateMidiTrack(analysis, instrument, 16);
+          updateTrack(newTrackId, { audioBuffer, isLoading: false });
+          setStatusText(`Added: ${command.description}`);
+        } else {
+          // Fallback to ElevenLabs if no analysis
+          const beatRes = await fetch("/api/generate-beat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              description: command.description,
+              durationSeconds: 8,
+            }),
+          });
+          if (!beatRes.ok) throw new Error("Generation failed");
+          const { audioBase64: fallbackBase64 } = await beatRes.json();
+          const audioBuffer = await base64ToAudioBuffer(fallbackBase64, "audio/mpeg");
+          updateTrack(newTrackId, { audioBuffer, isLoading: false });
+          setStatusText(`Added: ${command.description}`);
+        }
+
+      } else if (command.action === "change_mood") {
+        setStatusText(`Mood noted: ${command.description}`);
       } else if (command.action === "export") {
         setStatusText("Use export in transport bar");
       }

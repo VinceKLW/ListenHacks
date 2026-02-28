@@ -5,6 +5,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { Mic, Square } from "lucide-react";
 import { useTracksStore } from "@/store/tracks";
 import { blobToBase64, blobToAudioBuffer, getAudioContext } from "@/lib/audio-utils";
+import {
+  generateMidiTrack,
+  getMidiInstrumentColor,
+} from "@/lib/generate-midi-track";
+import { InstrumentType } from "@/types/midi";
 import { v4 as uuidv4 } from "uuid";
 
 function LevelMeter({ level }: { level: number }) {
@@ -35,17 +40,32 @@ function LevelMeter({ level }: { level: number }) {
   );
 }
 
+function getDefaultLayers(genre: string): InstrumentType[] {
+  const genreLayers: Record<string, InstrumentType[]> = {
+    pop: ["piano", "bass"],
+    electronic: ["lead", "bass", "pad"],
+    jazz: ["piano", "bass"],
+    classical: ["piano", "pad"],
+    hiphop: ["bass", "lead"],
+    rock: ["lead", "bass"],
+    rnb: ["piano", "bass", "pad"],
+    lofi: ["piano", "bass", "pad"],
+  };
+  return genreLayers[genre] || ["piano", "bass"];
+}
+
 export default function HumRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [generatingLayers, setGeneratingLayers] = useState<string[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  const { step, setStep, setHumBlob, setAnalysis, addTrack } =
+  const { step, setStep, setHumBlob, setAnalysis, addTrack, updateTrack } =
     useTracksStore();
 
   const updateLevel = useCallback(() => {
@@ -133,10 +153,7 @@ export default function HumRecorder() {
       isLoading: false,
     });
 
-    // Go straight to studio
-    setStep("studio");
-
-    // Analyze in the background so analysis metadata appears in transport bar
+    setStep("analyzing");
     try {
       const audioBase64 = await blobToBase64(blob);
       const analyzeRes = await fetch("/api/analyze-hum", {
@@ -145,16 +162,61 @@ export default function HumRecorder() {
         body: JSON.stringify({ audioBase64, mimeType: "audio/webm" }),
       });
 
-      if (analyzeRes.ok) {
-        const analysis = await analyzeRes.json();
-        setAnalysis(analysis);
-      }
+      if (!analyzeRes.ok) throw new Error("Analysis failed");
+      const analysis = await analyzeRes.json();
+      setAnalysis(analysis);
+
+      // Generate individual layers via MIDI
+      setStep("generating");
+      const defaultLayers = getDefaultLayers(analysis.genre);
+      setGeneratingLayers(defaultLayers);
+
+      // Create placeholder tracks for all layers
+      const layerTracks = defaultLayers.map((layer) => {
+        const id = uuidv4();
+        addTrack({
+          id,
+          name: `${layer.charAt(0).toUpperCase() + layer.slice(1)} (${analysis.key})`,
+          type: "midi",
+          audioUrl: null,
+          audioBuffer: null,
+          volume: layer === "bass" ? 0.65 : layer === "pad" ? 0.5 : 0.7,
+          muted: false,
+          solo: false,
+          color: getMidiInstrumentColor(layer),
+          isLoading: true,
+        });
+        return { id, instrument: layer };
+      });
+
+      // Generate all layers in parallel
+      await Promise.allSettled(
+        layerTracks.map(async ({ id, instrument }) => {
+          try {
+            const { audioBuffer } = await generateMidiTrack(
+              analysis,
+              instrument as InstrumentType,
+              16
+            );
+            updateTrack(id, { audioBuffer, isLoading: false });
+          } catch (err) {
+            console.error(`Failed to generate ${instrument}:`, err);
+            updateTrack(id, {
+              isLoading: false,
+              name: `${instrument} (failed)`,
+            });
+          }
+        })
+      );
+
+      setStep("studio");
     } catch (err) {
       console.error("Analysis error:", err);
+      setStep("studio");
     }
   };
 
-  if (step !== "record") {
+  if (step !== "record" && step !== "analyzing" && step !== "generating") {
     return null;
   }
 
@@ -302,6 +364,95 @@ export default function HumRecorder() {
           </motion.div>
         )}
 
+      {step === "analyzing" && (
+        <motion.div
+          key="analyzing"
+          variants={panelVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="daw-panel rounded-lg p-8 flex flex-col items-center gap-5 relative noise-overlay"
+        >
+          <div className="absolute top-3 left-3 rack-screw" />
+          <div className="absolute top-3 right-3 rack-screw" />
+          <div className="absolute bottom-3 left-3 rack-screw" />
+          <div className="absolute bottom-3 right-3 rack-screw" />
+
+          <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
+            Signal Analysis
+          </span>
+
+          <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
+            <div className="flex gap-1">
+              {[18, 28, 14, 32, 22, 36, 16, 30, 20, 34, 12, 26, 24, 35, 15, 29, 21, 33, 17, 31, 19, 27, 23, 25].map((h, i) => (
+                <div
+                  key={i}
+                  className="w-1 rounded-full bg-[#00D4FF] animate-signal"
+                  style={{
+                    height: `${h}px`,
+                    animationDelay: `${i * 0.08}s`,
+                    opacity: 0.4 + (i % 3) * 0.2,
+                  }}
+                />
+              ))}
+            </div>
+            <span className="text-[11px] led-cyan animate-led-pulse">
+              ANALYZING SIGNAL...
+            </span>
+          </div>
+
+          <p className="text-[10px] text-[#505058]">
+            Detecting key, tempo, mood, and genre
+          </p>
+        </motion.div>
+      )}
+
+      {step === "generating" && (
+        <motion.div
+          key="generating"
+          variants={panelVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="daw-panel rounded-lg p-8 flex flex-col items-center gap-5 relative noise-overlay"
+        >
+          <div className="absolute top-3 left-3 rack-screw" />
+          <div className="absolute top-3 right-3 rack-screw" />
+          <div className="absolute bottom-3 left-3 rack-screw" />
+          <div className="absolute bottom-3 right-3 rack-screw" />
+
+          <span className="text-[10px] uppercase tracking-[0.12em] text-[#808088] font-[family-name:var(--font-display)] font-semibold">
+            Track Generator
+          </span>
+
+          <div className="lcd-display px-8 py-4 flex flex-col items-center gap-3">
+            <div className="w-48 h-2 bg-[#0D0D0F] rounded overflow-hidden">
+              <div
+                className="h-full rounded"
+                style={{
+                  background: "linear-gradient(90deg, #00FF87, #00D4FF)",
+                  animation: "waveform-scan 2s ease-in-out infinite alternate",
+                  width: "60%",
+                }}
+              />
+            </div>
+            <span className="text-[11px] led-green animate-led-pulse">
+              GENERATING LAYERS...
+            </span>
+            {generatingLayers.length > 0 && (
+              <span className="text-[10px] text-[#505058] uppercase tracking-wider">
+                {generatingLayers.join(" · ")}
+              </span>
+            )}
+          </div>
+
+          <p className="text-[10px] text-[#505058]">
+            Rendering instrument layers. This may take a moment.
+          </p>
+        </motion.div>
+      )}
       </AnimatePresence>
     </div>
   );

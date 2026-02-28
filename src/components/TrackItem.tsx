@@ -18,6 +18,7 @@ const typeLabels: Record<string, string> = {
   arrangement: "ARR",
   beat: "BEAT",
   instrument: "INST",
+  midi: "MIDI",
 };
 
 const typeColors: Record<string, string> = {
@@ -25,6 +26,7 @@ const typeColors: Record<string, string> = {
   arrangement: "#00D4FF",
   beat: "#FFB800",
   instrument: "#00FF87",
+  midi: "#06b6d4",
 };
 
 export default function TrackItem({ track }: TrackItemProps) {

@@ -1,7 +1,7 @@
 export interface Track {
   id: string;
   name: string;
-  type: "hum" | "arrangement" | "beat" | "instrument";
+  type: "hum" | "arrangement" | "beat" | "instrument" | "midi";
   audioUrl: string | null;
   audioBuffer: AudioBuffer | null;
   volume: number; // 0-1
@@ -29,6 +29,7 @@ export interface VoiceCommand {
     | "export";
   description: string;
   value?: string;
+  instrument?: string;
 }
 
 export type AppStep = "record" | "analyzing" | "generating" | "studio";

@@ -1,0 +1,149 @@
+import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+export async function POST(req: NextRequest) {
+  try {
+    const { key, tempo, mood, genre, instrument, durationSeconds } =
+      await req.json();
+
+    if (!key || !tempo || !instrument) {
+      return NextResponse.json(
+        { error: "Missing required fields: key, tempo, instrument" },
+        { status: 400 }
+      );
+    }
+
+    const duration = durationSeconds || 16;
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const prompt = buildMidiPrompt({
+      key,
+      tempo,
+      mood,
+      genre,
+      instrument,
+      duration,
+    });
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+
+    const cleaned = text
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    const midiData = JSON.parse(cleaned);
+
+    // Validate structure
+    if (
+      !midiData.notes ||
+      !Array.isArray(midiData.notes) ||
+      midiData.notes.length === 0
+    ) {
+      return NextResponse.json(
+        { error: "Gemini returned invalid MIDI data: no notes array" },
+        { status: 502 }
+      );
+    }
+
+    for (const note of midiData.notes) {
+      if (
+        typeof note.note !== "string" ||
+        typeof note.time !== "number" ||
+        typeof note.duration !== "number" ||
+        typeof note.velocity !== "number"
+      ) {
+        return NextResponse.json(
+          { error: "Gemini returned malformed note data" },
+          { status: 502 }
+        );
+      }
+    }
+
+    return NextResponse.json(midiData);
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error("Generate MIDI error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate MIDI data", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+
+function buildMidiPrompt(params: {
+  key: string;
+  tempo: number;
+  mood: string;
+  genre: string;
+  instrument: string;
+  duration: number;
+}): string {
+  const { key, tempo, mood, genre, instrument, duration } = params;
+
+  const instrumentGuidance: Record<string, string> = {
+    piano: `Generate a piano chord progression. Use 3-4 note chords (triads or 7ths).
+Place chords on beats 1 and 3 (or appropriate rhythmic positions for the genre).
+Each chord should last 0.5-2 beats. Use chord tones that fit the key of ${key}.
+For ${genre} style, use idiomatic voicings.`,
+
+    bass: `Generate a bass line. Use ONLY single notes in octaves 1-3 (e.g., C2, E2, G1).
+Follow the root notes of a typical ${genre} chord progression in ${key}.
+Place notes on strong beats with occasional passing tones. Keep it rhythmically simple
+and groovy. Notes should be legato (duration 0.3-0.8 seconds typically).`,
+
+    pad: `Generate sustained pad chords. Use 3-4 note chords with long durations (2-4 seconds each).
+Notes should be in octaves 3-5. Overlap slightly for smooth transitions.
+Create a warm, atmospheric ${mood} feeling. Use diatonic chords in ${key}.`,
+
+    lead: `Generate a lead melody line. Use ONLY single notes in octaves 4-5.
+Create a memorable, singable melody that fits the ${mood} mood.
+Mix quarter notes, eighth notes, and occasional held notes.
+Leave some rests (gaps between notes) for breathing room.
+Stay within the ${key} scale.`,
+
+    melody: `Generate a counter-melody or secondary melodic line. Use single notes in octaves 3-5.
+Make it complementary (not identical) to a typical melody. Use syncopation and
+rhythmic variation. Stay in ${key} and fit the ${genre} style.`,
+  };
+
+  const guidance = instrumentGuidance[instrument] || instrumentGuidance["lead"];
+  const beatsTotal = (tempo / 60) * duration;
+
+  return `You are a professional music composer AI. Generate MIDI-like note data for a ${instrument} part.
+
+Musical context:
+- Key: ${key}
+- Tempo: ${tempo} BPM
+- Mood: ${mood}
+- Genre: ${genre}
+- Duration: ${duration} seconds (approximately ${Math.round(beatsTotal)} beats)
+- Time signature: 4/4
+
+Instrument-specific guidance:
+${guidance}
+
+CRITICAL RULES:
+1. All note times must be between 0 and ${duration} seconds
+2. Note names must use standard format: C, D, E, F, G, A, B with optional # or b and octave number (e.g., "C4", "Eb3", "F#5")
+3. Velocity values must be between 0.0 and 1.0 (use 0.5-0.9 for most notes)
+4. Keep the part musically coherent and rhythmically aligned to the tempo grid
+5. Generate at least 8 notes and no more than 200 notes
+6. Times should align to the beat grid: one beat = ${(60 / tempo).toFixed(4)} seconds
+
+Return ONLY valid JSON with no markdown formatting, no code fences, no extra text:
+{
+  "instrument": "${instrument}",
+  "bpm": ${tempo},
+  "key": "${key}",
+  "timeSignature": "4/4",
+  "durationSeconds": ${duration},
+  "notes": [
+    { "note": "C4", "time": 0.0, "duration": 0.5, "velocity": 0.8 },
+    { "note": "E4", "time": 0.0, "duration": 0.5, "velocity": 0.7 }
+  ]
+}`;
+}
